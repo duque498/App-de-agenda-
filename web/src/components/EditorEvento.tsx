@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase, type Contexto, type Evento } from "../lib/supabase";
 import { avaliarEsforco } from "../lib/assistente";
+import { diaDe } from "../lib/dates";
 
 const CONTEXTOS: { id: Contexto; rotulo: string }[] = [
   { id: "trabalho", rotulo: "Trabalho" },
@@ -27,6 +28,8 @@ type Props = {
 // Uma folha só para criar e editar: menos código, mesmo comportamento.
 export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Props) {
   const [title, setTitle] = useState(evento?.title ?? "");
+  const [data, setData] = useState(evento ? diaDe(evento.starts_at) : dia);
+  const [diaInteiro, setDiaInteiro] = useState(evento?.all_day ?? false);
   const [context, setContext] = useState<Contexto>(evento?.context ?? "pessoal");
   const [inicio, setInicio] = useState(evento ? horaLocal(evento.starts_at) : horaInicial ?? "09:00");
   const [fim, setFim] = useState(evento ? horaLocal(evento.ends_at) : "");
@@ -58,8 +61,9 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
     const payload = {
       title: title.trim(),
       context,
-      starts_at: `${dia}T${inicio}:00-03:00`,
-      ends_at: fim ? `${dia}T${fim}:00-03:00` : null,
+      all_day: diaInteiro,
+      starts_at: diaInteiro ? `${data}T00:00:00-03:00` : `${data}T${inicio}:00-03:00`,
+      ends_at: diaInteiro ? null : fim ? `${data}T${fim}:00-03:00` : null,
       notes: notes.trim() || null,
     };
     const q = evento
@@ -103,14 +107,27 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
 
         <div className="linha">
           <label>
-            Começa
-            <input type="time" value={inicio} onChange={(e) => setInicio(e.target.value)} required />
+            Data
+            <input type="date" value={data} onChange={(e) => setData(e.target.value)} required />
           </label>
-          <label>
-            Termina
-            <input type="time" value={fim} onChange={(e) => setFim(e.target.value)} />
+          <label className="alternar">
+            Dia inteiro
+            <input type="checkbox" checked={diaInteiro} onChange={(e) => setDiaInteiro(e.target.checked)} />
           </label>
         </div>
+
+        {!diaInteiro && (
+          <div className="linha">
+            <label>
+              Começa
+              <input type="time" value={inicio} onChange={(e) => setInicio(e.target.value)} required />
+            </label>
+            <label>
+              Termina
+              <input type="time" value={fim} onChange={(e) => setFim(e.target.value)} />
+            </label>
+          </div>
+        )}
 
         <textarea
           placeholder="Notas (a IA usa isso pra avaliar o esforço)"

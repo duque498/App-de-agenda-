@@ -167,3 +167,15 @@ A chave sai de console.anthropic.com e é cobrada por uso, separado da assinatur
 - A escala (0–20 rotina, 21–45 conhecido, 46–70 trabalho de verdade, 71–100 pesado) está no system prompt. Sem escala explícita cada chamada inventa a própria régua e os números não são comparáveis entre eventos.
 - UI: `%` no canto do bloco na timeline; no editor, barra com cor por faixa (classe `media`/`alta`), brief e dicas. As notas do evento são salvas antes de avaliar, porque a função lê do banco, não do formulário.
 - Erro meu corrigido no caminho: tentei fazer a cor da barra mudar via `background-size` no gradiente. Não funciona — `background-size` é relativo ao próprio elemento, então a barra sempre mostraria o mesmo trecho do gradiente. Classes por faixa são mais simples e previsíveis.
+
+## 13. Visualizações (dia, semana, mês, lista) e criação de evento
+
+Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas de navegação, "+" grande no canto, "Agenda" como lista cronológica, grade mensal com pontos. Os diferenciais continuam só na visão Dia (briefing, esforço, linha de agora, chat).
+
+- **Carregar só o intervalo visível**: `intervalo(visao, dia)` devolve início/fim pra cada visão (1 dia, 7 dias, 42 dias da grade, 14 dias da lista). O `useCallback` de `carregar` depende de `[dia, visao]`, então trocar a visão recarrega sozinho.
+- **Semana começa na segunda** (`inicioDaSemana`): `getUTCDay()` dá 0 = domingo; a conta `dow === 0 ? -6 : 1 - dow` volta pra segunda.
+- **Grade do mês com 42 células** (6 semanas fixas): o layout não "pula" de altura entre meses de 5 e 6 semanas.
+- **Visão da semana reaproveita a matemática da timeline** com `ALTURA_HORA` menor (40px vs 56px). Mesma função de minutos; só a escala muda.
+- **Visão preferida persiste em `localStorage`** com try/catch — em modo privado o acesso pode lançar erro.
+- **Editor ganhou Data e Dia inteiro**: `all_day` grava `starts_at` à meia-noite de SP e `ends_at` nulo; a timeline mostra dia-inteiro como chips acima da régua.
+- **Dois botões flutuantes**: "+" (ação principal, como no Google) e "Mudar o dia" (chat). Primário maior, secundário discreto.
