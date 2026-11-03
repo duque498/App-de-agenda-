@@ -204,3 +204,12 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - **Esforço automático também pelo chat**: `criar_evento` e `criar_serie` agora chamam a função `esforco` por HTTP, com o mesmo JWT do dono (ela confere o e-mail). Reusar a função em vez de copiar a lógica garante que avaliação manual, do editor e do chat sejam idênticas (mesmo perfil, mesma calibração).
 - **Série avalia uma vez e copia**: 40 "Escola" idênticos não precisam de 40 chamadas; avalia o primeiro e replica `effort/brief/tips` nos outros com um `update ... in (ids)`. Custo cai de O(n) pra O(1) chamadas de IA.
 - Falha na avaliação não derruba a criação: `avaliar()` engole o erro e devolve `null`; o item existe, só fica sem %.
+
+## 17. T.O.B.I.A.S. — assistente com conversa persistente
+
+- **Histórico no banco, não no app.** Tabela `chat_messages` (role, content jsonb, visible). O app manda só `{ texto }`; a função carrega as últimas 60 mensagens, roda o loop de ferramentas e grava **tudo que aconteceu nessa rodada** (mensagem do usuário, tool_use, tool_result, resposta). Fechar o app não perde a conversa, e o Tobias lembra o que já fez.
+- `visible = false` nas linhas que são só tool_use/tool_result: elas existem pra IA lembrar, não pra tela. Uma coluna booleana evita filtrar JSON no front.
+- **Bug corrigido no caminho** (o erro "tool_use ids were found without tool_result"): o modelo disparou 8 chamadas de ferramenta de uma vez e estourou `max_tokens: 1024` no meio. Meu código decidia pelo `stop_reason`, viu que não era `tool_use` e tratou como resposta final — guardando no histórico um assistant com tool_use sem resposta. Três correções: `max_tokens: 4096`; decidir pelo **conteúdo** (tem tool_use? executa); e `limparHistorico()`, que remove tool_use órfãos antes de mandar pra API. Lição: nunca confie só em metadado; valide o estado que você vai reenviar.
+- **Ferramentas novas**: `ler_resumos_recentes` (PRs, reviews, issues, e-mails, curso dos últimos N dias — é por aí que ele "integra o trabalho") e `listar_periodo`. Ele não acessa GitHub/Gmail ao vivo; o prompt o obriga a dizer a data do resumo quando a pergunta exige dado atual.
+- **Persona no system prompt**: direto, seco, humor raro, nunca bajula. Personalidade é prompt, não código — e fica num lugar só.
+- UI: aba própria em vez de gaveta. Conversa precisa de espaço; gaveta era pra comando rápido. O botão "Tobias" flutuante só leva pra aba.

@@ -67,6 +67,16 @@ const tools = [
     },
   },
   {
+    name: "ler_resumos_recentes",
+    description: "Os últimos resumos diários de trabalho (PRs abertas, reviews pedidos, issues, e-mails que exigem ação, estado do curso). É a visão do que está pendente na Medweb e no curso.",
+    input_schema: { type: "object", properties: { dias: { type: "integer", description: "quantos dias pra trás (padrão 3)" } } },
+  },
+  {
+    name: "listar_periodo",
+    description: "Lista eventos e tarefas entre duas datas (YYYY-MM-DD), inclusive. Útil pra semana/mês.",
+    input_schema: { type: "object", properties: { de: { type: "string" }, ate: { type: "string" } }, required: ["de", "ate"] },
+  },
+  {
     name: "criar_evento",
     description: "Cria um item na agenda: evento (ocupa horário) ou tarefa (algo a fazer no dia; hora opcional — sem hora, use all_day true e starts_at à meia-noite -03:00).",
     input_schema: {
@@ -142,6 +152,19 @@ async function executar(nome: string, input: Record<string, unknown>) {
         .order("starts_at");
       return error ? { erro: error.message } : { eventos: data };
     }
+    case "ler_resumos_recentes": {
+      const n = Math.min(14, Math.max(1, Number(input.dias ?? 3)));
+      const { data, error } = await admin.from("daily_briefs").select("brief_date,github,gmail,course,suggestion")
+        .order("brief_date", { ascending: false }).limit(n);
+      return error ? { erro: error.message } : { resumos: data };
+    }
+    case "listar_periodo": {
+      const { data, error } = await admin.from("events")
+        .select("id,kind,done,title,context,starts_at,ends_at,all_day,effort")
+        .gte("starts_at", `${input.de}T00:00:00-03:00`).lte("starts_at", `${input.ate}T23:59:59-03:00`)
+        .order("starts_at").limit(200);
+      return error ? { erro: error.message } : { eventos: data };
+    }
     case "ler_resumo": {
       const { data, error } = await admin.from("daily_briefs").select("*").eq("brief_date", input.dia).maybeSingle();
       return error ? { erro: error.message } : { resumo: data };
@@ -212,6 +235,51 @@ async function executar(nome: string, input: Record<string, unknown>) {
 // ---------- handler ----------
 
 type Msg = { role: "user" | "assistant"; content: unknown };
+type BlocoConteudo = { type: string; id?: string; tool_use_id?: string };
+
+// A API exige: todo tool_use numa mensagem do assistente tem que ter tool_result na mensagem
+// seguinte. Se o histórico foi cortado (slice) ou veio quebrado de um erro anterior, isso falha.
+// Aqui a gente remove blocos tool_use órfãos e tool_result sem par, e garante que o histórico
+// comece numa mensagem de usuário com texto.
+function limparHistorico(msgs: Msg[]): Msg[] {
+  const out: Msg[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.role === "assistant" && Array.isArray(m.content)) {
+      const blocos = m.content as BlocoConteudo[];
+      const usos = blocos.filter((b) => b.type === "tool_use").map((b) => b.id);
+      const prox = msgs[i + 1];
+      const resultados = prox?.role === "user" && Array.isArray(prox.content)
+        ? new Set((prox.content as BlocoConteudo[]).filter((b) => b.type === "tool_result").map((b) => b.tool_use_id))
+        : new Set<string | undefined>();
+      const semResposta = usos.some((id) => !resultados.has(id));
+      if (semResposta) {
+        // Mantém só o texto; descarta os tool_use órfãos.
+        const soTexto = blocos.filter((b) => b.type === "text");
+        if (soTexto.length) out.push({ role: "assistant", content: soTexto });
+        continue;
+      }
+    }
+    if (m.role === "user" && Array.isArray(m.content)) {
+      // tool_result só faz sentido logo após um assistant com tool_use que sobreviveu.
+      const ant = out[out.length - 1];
+      const temUso = ant?.role === "assistant" && Array.isArray(ant.content) &&
+        (ant.content as BlocoConteudo[]).some((b) => b.type === "tool_use");
+      if (!temUso) continue;
+    }
+    out.push(m);
+  }
+  // Começa sempre num user com texto; mensagens consecutivas do mesmo papel se fundem no texto.
+  while (out.length && (out[0].role !== "user" || Array.isArray(out[0].content))) out.shift();
+  const fundido: Msg[] = [];
+  for (const m of out) {
+    const ult = fundido[fundido.length - 1];
+    if (ult && ult.role === m.role && typeof ult.content === "string" && typeof m.content === "string") {
+      ult.content = `${ult.content}\n${m.content}`;
+    } else fundido.push(m);
+  }
+  return fundido;
+}
 
 Deno.serve(async (req) => {
   const cors = {
@@ -236,7 +304,20 @@ Deno.serve(async (req) => {
     return Response.json({ erro: (e as Error).message }, { status: 500, headers: cors });
   }
 
-  const { messages } = (await req.json()) as { messages: Msg[] };
+  const corpo = (await req.json()) as { texto?: string; messages?: Msg[]; limpar?: boolean };
+
+  // /limpar: zera a conversa.
+  if (corpo.limpar) {
+    await admin.from("chat_messages").delete().gt("id", 0);
+    return Response.json({ ok: true }, { headers: cors });
+  }
+
+  // Histórico vem do banco (persistente), não do app. O app manda só o texto novo.
+  const { data: salvas } = await admin.from("chat_messages").select("role,content").order("id", { ascending: true }).limit(60);
+  const anteriores: Msg[] = (salvas ?? []).map((r) => ({ role: r.role as Msg["role"], content: r.content }));
+  const textoNovo = (corpo.texto ?? "").trim();
+  if (!textoNovo && !corpo.messages) return Response.json({ erro: "Mensagem vazia." }, { status: 400, headers: cors });
+  const messages: Msg[] = corpo.messages ?? [...anteriores, { role: "user", content: textoNovo }];
   const { data: perfilRow } = await admin.from("perfil").select("texto").eq("id", 1).maybeSingle();
   const perfil = perfilRow?.texto ?? "";
   const agora = new Intl.DateTimeFormat("pt-BR", {
@@ -244,7 +325,8 @@ Deno.serve(async (req) => {
   }).format(new Date());
   const hojeISO = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
 
-  const system = `Você administra a agenda pessoal do Duque.
+  const system = `Você é o T.O.B.I.A.S., assistente pessoal do Duque. Administra a agenda dele, acompanha o trabalho na Medweb e o curso, e conversa sobre o que ele precisar organizar.
+Personalidade: direto, seco no bom sentido, competente, com humor fino e raro. Nunca bajula. Chama ele de Duque. Trata a agenda dele como coisa séria, mas sem drama.
 
 SOBRE ELE (escrito por ele; use pra decidir contexto, horários e prioridades):
 ${perfil || "(sem perfil)"}
@@ -252,8 +334,9 @@ ${perfil || "(sem perfil)"}
 Agora é ${agora} (fuso ${TZ}). Hoje é ${hojeISO}.
 Contextos possíveis: trabalho (Medweb), escola, curso (web.dev), pessoal.
 Dois tipos de item: evento (reunião, aula, bloco de trabalho — ocupa horário) e tarefa (algo a fazer no dia, ex. "responder o Kazu", "terminar issue 333" — hora opcional, pode ser concluída). "Lembra de", "preciso fazer", "tarefa" → tarefa.
+Fontes: a agenda (listar_dia, listar_periodo) e os resumos diários de trabalho (ler_resumos_recentes) que chegam às 14h com PRs, reviews, issues, e-mails e estado do curso. Você não acessa GitHub/Gmail ao vivo; se perguntarem algo que exige isso, diga que o dado é do último resumo e a data dele.
 Regras:
-- Fale em português do Brasil, direto e curto. Sem floreio, sem sermão.
+- Fale em português do Brasil, direto e curto. Sem floreio, sem sermão. Markdown leve quando ajudar (lista, negrito).
 - Antes de criar ou mover algo, use listar_dia pra não sobrepor blocos sem avisar.
 - Horários sempre em ISO com offset -03:00. "Amanhã", "sexta" etc. você resolve a partir de hoje.
 - Se a pessoa pedir pra "organizar o dia", leia ler_resumo e listar_dia primeiro e proponha blocos concretos; só crie depois de ela confirmar, a não ser que ela já tenha mandado criar.
@@ -261,14 +344,16 @@ Regras:
 - Se faltar informação essencial (que horas?), pergunte em uma frase.
 - Pra algo que se repete (aula toda semana, escola em dias úteis, tarefa toda sexta) use criar_serie, com kind "tarefa" quando for tarefa. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.`;
 
-  const historico: Msg[] = [...messages].slice(-20);
+  const historico: Msg[] = limparHistorico([...messages].slice(-30));
   const acoes: string[] = [];
+  // Tudo a partir daqui (a mensagem nova do usuário é a última) é o que será persistido no fim.
+  const inicioNovo = Math.max(0, historico.length - 1);
 
   for (let rodada = 0; rodada < 8; rodada++) {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1024, system, tools, messages: historico }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 4096, system, tools, messages: historico }),
     });
     if (!resp.ok) {
       return Response.json({ erro: `Anthropic ${resp.status}: ${await resp.text()}` }, { status: 502, headers: cors });
@@ -276,11 +361,23 @@ Regras:
     const data = await resp.json();
     historico.push({ role: "assistant", content: data.content });
 
-    if (data.stop_reason !== "tool_use") {
+    // Decide pelo conteúdo, não só pelo stop_reason: se estourou max_tokens no meio de uma
+    // sequência de tool_use, os blocos completos ainda precisam ser executados e respondidos.
+    const temToolUse = (data.content as BlocoConteudo[]).some((b) => b.type === "tool_use");
+    if (!temToolUse) {
       const texto = (data.content as { type: string; text?: string }[])
         .filter((b) => b.type === "text")
         .map((b) => b.text)
         .join("\n");
+      // Persiste só o que é novo nesta rodada: a mensagem do usuário e tudo que veio depois.
+      if (!corpo.messages) {
+        const linhas = historico.slice(inicioNovo).map((m) => ({
+          role: m.role,
+          content: m.content as unknown as object,
+          visible: typeof m.content === "string" || (Array.isArray(m.content) && (m.content as BlocoConteudo[]).some((b) => b.type === "text")),
+        }));
+        if (linhas.length) await admin.from("chat_messages").insert(linhas);
+      }
       return Response.json({ resposta: texto, acoes, historico }, { headers: cors });
     }
 

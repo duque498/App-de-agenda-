@@ -14,10 +14,10 @@ import { EditorEvento } from "./components/EditorEvento";
 import { Detalhe } from "./components/Detalhe";
 import { Tarefas } from "./components/Tarefas";
 import { Perfil } from "./components/Perfil";
-import { Chat } from "./components/Chat";
+import { Tobias } from "./components/Tobias";
 import { PushToggle } from "./components/PushToggle";
 
-type Visao = "dia" | "semana" | "mes" | "grade" | "lista";
+type Visao = "dia" | "semana" | "mes" | "grade" | "lista" | "tobias";
 type Editor = { evento: Evento | null; tipo: Tipo; horaInicial?: string } | null;
 
 const VISOES: { id: Visao; rotulo: string }[] = [
@@ -26,6 +26,7 @@ const VISOES: { id: Visao; rotulo: string }[] = [
   { id: "mes", rotulo: "Mês" },
   { id: "grade", rotulo: "Grade" },
   { id: "lista", rotulo: "Lista" },
+  { id: "tobias", rotulo: "Tobias" },
 ];
 
 // Intervalo de eventos a carregar depende da visão: só o necessário, nada de baixar o ano inteiro.
@@ -39,6 +40,7 @@ function intervalo(visao: Visao, dia: string): { inicio: string; fim: string } {
     const { dias } = gradeDoMes(dia);
     return { inicio: limitesDoDia(dias[0]).inicio, fim: limitesDoDia(dias[41]).fim };
   }
+  if (visao === "tobias") return limitesDoDia(dia);
   if (visao === "grade") return { inicio: limitesDoDia(dia).inicio, fim: limitesDoDia(addDias(dia, 13)).fim };
   return { inicio: limitesDoDia(hojeISO()).inicio, fim: limitesDoDia(addDias(hojeISO(), 14)).fim };
 }
@@ -54,7 +56,6 @@ export default function App() {
   const [detalhe, setDetalhe] = useState<Evento | null>(null);
   const [menuNovo, setMenuNovo] = useState(false);
   const [perfilAberto, setPerfilAberto] = useState(false);
-  const [chatAberto, setChatAberto] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -100,7 +101,8 @@ export default function App() {
 
   // Título e navegação mudam com a visão: passo de 1 dia, 7 dias ou 1 mês.
   const titulo =
-    visao === "mes" ? mesAno(dia)
+    visao === "tobias" ? "T.O.B.I.A.S."
+    : visao === "mes" ? mesAno(dia)
     : visao === "lista" ? "Próximos dias"
     : visao === "grade" ? `A partir de ${Number(dia.slice(8))}`
     : visao === "semana" ? `Semana de ${Number(inicioDaSemana(dia).slice(8))}`
@@ -111,12 +113,12 @@ export default function App() {
     <main className="app">
       <header className="cabecalho">
         <div className="cabecalho-titulo">
-          {visao !== "lista" && <button className="nav" onClick={() => setDia(addDias(dia, -passo))} aria-label="Anterior">‹</button>}
+          {visao !== "lista" && visao !== "tobias" && <button className="nav" onClick={() => setDia(addDias(dia, -passo))} aria-label="Anterior">‹</button>}
           <div onClick={() => setDia(hojeISO())}>
             <h1>{titulo}</h1>
             {visao === "dia" && <small>{formatarDia(dia)}</small>}
           </div>
-          {visao !== "lista" && <button className="nav" onClick={() => setDia(addDias(dia, passo))} aria-label="Próximo">›</button>}
+          {visao !== "lista" && visao !== "tobias" && <button className="nav" onClick={() => setDia(addDias(dia, passo))} aria-label="Próximo">›</button>}
         </div>
         <div className="cabecalho-acoes">
           <PushToggle />
@@ -148,9 +150,10 @@ export default function App() {
       {visao === "mes" && <VisaoMes dia={dia} eventos={eventos} onDia={irPara} />}
       {visao === "grade" && <VisaoGrade dia={dia} eventos={eventos} onAbrir={abrir} onDia={irPara} />}
       {visao === "lista" && <VisaoLista eventos={eventos} onAbrir={abrir} />}
+      {visao === "tobias" && <Tobias onMudouAgenda={carregar} />}
 
-      <div className="fabs">
-        <button className="fab secundario" onClick={() => setChatAberto(true)}>Mudar o dia</button>
+      <div className={`fabs ${visao === "tobias" ? "escondido" : ""}`}>
+        <button className="fab secundario" onClick={() => setVisao("tobias")}>Tobias</button>
         <button className={`fab ${menuNovo ? "aberto" : ""}`} onClick={() => setMenuNovo(!menuNovo)} aria-label="Criar">+</button>
       </div>
 
@@ -192,7 +195,6 @@ export default function App() {
 
       {perfilAberto && <Perfil onFechar={() => setPerfilAberto(false)} />}
 
-      <Chat aberto={chatAberto} onFechar={() => setChatAberto(false)} onMudouAgenda={carregar} />
     </main>
   );
 }

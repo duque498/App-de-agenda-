@@ -435,3 +435,22 @@ button.push.ativo { color: var(--acao); }
 .cartao .item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cartao .item.tarefa { background: transparent; border: 1px dashed color-mix(in srgb, var(--ctx) 50%, transparent); }
 .cartao .item.feita .t { text-decoration: line-through; color: var(--texto-3); }
+
+/* ---------- tobias ---------- */
+.tobias { display: flex; flex-direction: column; min-height: calc(100vh - 220px); }
+.tobias-cabecalho { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.tobias-cabecalho h2 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.04em; }
+.tobias-cabecalho small { display: block; margin-top: 2px; }
+.tobias-mensagens { flex: 1; max-height: none; padding-bottom: 12px; }
+.tobias-form {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  display: flex; gap: 8px;
+  padding-top: 10px;
+  background: linear-gradient(to top, var(--fundo) 70%, transparent);
+}
+.tobias-form input { flex: 1; }
+.tobias-form button { background: var(--acao); color: var(--fundo); padding: 12px 18px; border-radius: var(--raio-p); font-weight: 600; }
+.tobias-form button:disabled { opacity: 0.45; }
+.fabs.escondido { display: none; }
+.app:has(.tobias) { padding-bottom: calc(env(safe-area-inset-bottom) + 24px); }
