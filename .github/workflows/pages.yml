@@ -1,0 +1,51 @@
+name: Publicar PWA no GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    # Chaves publicáveis do Supabase (anon/publishable) — feitas pra ficar no front;
+    # a segurança vem do RLS, não do sigilo delas. Nada de service role aqui.
+    env:
+      VITE_SUPABASE_URL: https://mtkbchoekmmngyzvyads.supabase.co
+      VITE_SUPABASE_ANON_KEY: sb_publishable_x-NliHjmI8s3SIu7vXUOqg_2A2cyZ9j
+      VITE_VAPID_PUBLIC_KEY: BEcH3GZbkfYNhxdmIP-2E_qiNw9PMUFDOPiD_LK9k-kUDzZw1IUQiRpePMhYL0S9FWygSXVNdKwYRE4SbAjd1bA
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
