@@ -68,17 +68,35 @@ small { color: var(--texto-2); }
 
 /* ---------- briefing: texto puro, sem caixa ---------- */
 
-.briefing { margin-bottom: 26px; }
-.briefing .sugestao {
-  font-size: 1.4rem;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.015em;
-  text-wrap: balance;
+.briefing {
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: var(--raio);
+  background: var(--camada);
+  border-left: 3px solid var(--acao);
 }
-.briefing.vazio .sugestao { color: var(--texto-3); font-weight: 400; font-size: 1.1rem; }
-.briefing .linha-meta { color: var(--texto-2); margin-top: 10px; font-size: 0.9rem; }
-.briefing .texto { margin-top: 8px; }
+.briefing .sugestao {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+}
+.briefing.vazio { border-left-color: var(--linha); }
+.briefing.vazio .sugestao { color: var(--texto-3); font-weight: 400; font-size: 0.95rem; }
+.briefing .linha-meta { color: var(--texto-2); margin-top: 6px; font-size: 0.82rem; line-height: 1.4; }
+.briefing .abrir { margin-top: 8px; font-size: 0.85rem; color: var(--acao); }
+.resumo-completo {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--linha);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  animation: entrar 0.2s ease-out both;
+}
+.resumo-completo .md h1, .resumo-completo .md h2, .resumo-completo .md h3 { font-size: 0.85rem; color: var(--texto-2); text-transform: none; margin: 12px 0 4px; }
+.resumo-completo .md h1:first-child, .resumo-completo .md h2:first-child, .resumo-completo .md h3:first-child { margin-top: 0; }
+.resumo-completo .md ul { padding-left: 16px; }
+.resumo-completo .md li { margin: 3px 0; }
 .pendencias {
   list-style: none;
   margin: 12px 0 0;
@@ -414,7 +432,7 @@ button.push.ativo { color: var(--acao); }
 .md h1, .md h2, .md h3 { font-size: 1rem; font-weight: 600; margin: 10px 0 4px; }
 .md blockquote { margin: 6px 0; padding-left: 12px; border-left: 2px solid var(--linha); color: var(--texto-2); }
 .md hr { border: 0; border-top: 1px solid var(--linha); margin: 10px 0; }
-.sugestao.md strong { color: var(--acao); }
+.sugestao.md strong { color: var(--acao); font-weight: 600; }
 .dicas .md p { margin: 0; }
 
 /* ---------- grade ---------- */
@@ -454,3 +472,71 @@ button.push.ativo { color: var(--acao); }
 .tobias-form button:disabled { opacity: 0.45; }
 .fabs.escondido { display: none; }
 .app:has(.tobias) { padding-bottom: calc(env(safe-area-inset-bottom) + 24px); }
+
+/* ---------- movimento ---------- */
+
+@keyframes entrar { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pulsar { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.7; } }
+@keyframes marcar { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+
+.conteudo { animation: entrar 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.gaveta-painel { transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+.gaveta.aberta .gaveta-painel { animation: entrar 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+.menu-novo .opcoes { animation: entrar 0.18s ease-out both; }
+.menu-novo .opcoes button:active, .bloco:active, .lista-item:active, .cartao .item:active, .tarefa .corpo:active { transform: scale(0.98); }
+.menu-novo .opcoes button, .lista-item, .cartao .item, .tarefa .corpo, .chip, .visoes button, .semana .dia, .col-dia, .celula { transition: transform 0.12s, background 0.15s, color 0.15s; }
+.fabs .fab:active { transform: scale(0.92); }
+.fabs .fab.aberto:active { transform: rotate(45deg) scale(0.92); }
+
+/* check da tarefa */
+.tarefa .caixa .check { opacity: 0; transform: scale(0.6); }
+.tarefa.feita .caixa .check { animation: marcar 0.25s ease-out forwards; }
+.tarefa .titulo { transition: color 0.2s; }
+
+/* skeleton enquanto carrega sem cache */
+.skeleton { display: grid; gap: 10px; }
+.sk { display: block; border-radius: var(--raio-p); background: var(--camada); animation: pulsar 1.4s ease-in-out infinite; }
+.sk-hero { height: 58px; width: 90%; }
+.sk-meta { height: 16px; width: 60%; margin-bottom: 14px; }
+.sk-faixa { height: 52px; margin-bottom: 8px; }
+.sk-bloco { height: 44px; width: 100%; }
+.sk-bloco.curto { width: 70%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .conteudo, .gaveta-painel, .menu-novo .opcoes, .sk, .tarefa.feita .caixa .check { animation: none !important; }
+  .tarefa.feita .caixa .check { opacity: 1; transform: none; }
+}
+
+/* ---------- alvos de toque ---------- */
+.nav, .texto, button.push, .cabecalho-acoes button { min-height: 36px; }
+.semana .dia, .col-dia, .celula, .visoes button { min-height: 44px; }
+.marca { min-height: 44px; }
+
+/* ---------- telas maiores ---------- */
+
+@media (min-width: 760px) {
+  .app { max-width: 1040px; padding-left: 28px; padding-right: 28px; }
+  .cabecalho h1 { font-size: 2rem; }
+  .dia-layout { display: grid; grid-template-columns: 380px 1fr; gap: 32px; align-items: start; }
+  .dia-coluna-a { position: sticky; top: 16px; }
+  .grade-view { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .lista-view { max-width: 680px; }
+  .gaveta-painel { max-width: 640px; border-radius: 22px; bottom: 24px; }
+  .fabs { right: 28px; bottom: 28px; }
+  .faixa { font-size: 0.72rem; }
+  .semana-cabecalho, .semana-corpo { grid-template-columns: 34px repeat(7, 1fr); }
+  .tobias { max-width: 760px; margin: 0 auto; width: 100%; }
+}
+@media (min-width: 1100px) {
+  .grade-view { grid-template-columns: repeat(4, 1fr); }
+  .dia-layout { grid-template-columns: 420px 1fr; }
+}
+
+/* telas muito estreitas (iPhone SE) */
+@media (max-width: 360px) {
+  .app { padding-left: 14px; padding-right: 14px; }
+  .visoes button { padding: 7px 10px; font-size: 0.82rem; }
+  .cabecalho h1 { font-size: 1.5rem; }
+  .briefing { padding: 12px 14px; }
+  .fabs .fab.secundario { padding: 0 12px; font-size: 0.85rem; }
+}

@@ -228,3 +228,9 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - A mensagem do usuário é gravada **antes** de começar: se tudo falhar depois, ela não some. Erro no loop vira uma mensagem do assistente com `erro = true` (vermelha na tela) — nunca silêncio.
 - Coluna `acoes` na resposta: o app recarrega a agenda só quando a IA mudou algo, sem comparar listas.
 - Padrão geral: operação que pode demorar não deve segurar o HTTP. Aceita → trabalha → grava → cliente observa.
+
+## 21. Briefing compacto com resumo completo
+
+- A sugestão do dia caiu de 1.4rem pra 1rem: o herói virou um cartão discreto com borda verde-água, que lê rápido e não empurra a timeline pra baixo da dobra. Hierarquia agora é: sugestão → uma linha de contexto (pendências, issues, próximo módulo, streak) → "Ver resumo completo".
+- O resumo completo é o `raw_markdown` que a tarefa das 14h já gravava e o app nunca mostrava. Renderizado com `Md`, títulos rebaixados pra não brigar com o resto da tela. Sem `raw_markdown` (resumos antigos), cai na lista de pendências.
+- Regra de design: o que tu lê toda vez fica pequeno e sempre visível; o que tu lê às vezes fica dobrado e completo.

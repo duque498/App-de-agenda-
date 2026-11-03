@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, type Brief, type Evento, type Tipo } from "./lib/supabase";
 import { addDias, formatarDia, gradeDoMes, hojeISO, inicioDaSemana, limitesDoDia, mesAno } from "./lib/dates";
@@ -13,9 +13,22 @@ import { VisaoGrade } from "./components/VisaoGrade";
 import { EditorEvento } from "./components/EditorEvento";
 import { Detalhe } from "./components/Detalhe";
 import { Tarefas } from "./components/Tarefas";
-import { Perfil } from "./components/Perfil";
-import { Tobias } from "./components/Tobias";
 import { PushToggle } from "./components/PushToggle";
+
+// Carregados sob demanda: Tobias traz marked+DOMPurify, Perfil raramente abre.
+// O bundle inicial fica menor e a primeira tela aparece antes.
+const Tobias = lazy(() => import("./components/Tobias").then((m) => ({ default: m.Tobias })));
+const Perfil = lazy(() => import("./components/Perfil").then((m) => ({ default: m.Perfil })));
+
+// Cache local dos dados por visão+dia: a tela abre com o que foi visto da última vez e
+// atualiza por baixo quando a rede responde (stale-while-revalidate). Nunca abre vazia.
+type Snapshot = { brief: Brief | null; eventos: Evento[]; streak: number };
+function lerCache(chave: string): Snapshot | null {
+  try { const raw = localStorage.getItem(`cache:${chave}`); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function gravarCache(chave: string, snap: Snapshot) {
+  try { localStorage.setItem(`cache:${chave}`, JSON.stringify(snap)); } catch { /* cheio ou privado */ }
+}
 
 type Visao = "dia" | "semana" | "mes" | "grade" | "lista" | "tobias";
 type Editor = { evento: Evento | null; tipo: Tipo; horaInicial?: string } | null;
@@ -49,9 +62,13 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [dia, setDia] = useState(() => new URLSearchParams(location.search).get("dia") ?? hojeISO());
   const [visao, setVisao] = useState<Visao>(() => (localStorage.getItem("visao") as Visao) || "dia");
-  const [brief, setBrief] = useState<Brief | null>(null);
-  const [eventos, setEventos] = useState<Evento[]>([]);
-  const [streak, setStreak] = useState<number | null>(null);
+  const chave = `${visao}:${dia}`;
+  const inicial = lerCache(chave);
+  const [brief, setBrief] = useState<Brief | null>(inicial?.brief ?? null);
+  const [eventos, setEventos] = useState<Evento[]>(inicial?.eventos ?? []);
+  const [streak, setStreak] = useState<number | null>(inicial?.streak ?? null);
+  const [carregando, setCarregando] = useState(!inicial);
+  const pedidoAtual = useRef(0);
   const [editor, setEditor] = useState<Editor>(null);
   const [detalhe, setDetalhe] = useState<Evento | null>(null);
   const [menuNovo, setMenuNovo] = useState(false);
@@ -69,14 +86,20 @@ export default function App() {
 
   const carregar = useCallback(async () => {
     const { inicio, fim } = intervalo(visao, dia);
+    const meuPedido = ++pedidoAtual.current; // descarta respostas de pedidos antigos (troca rápida de dia)
+    const cache = lerCache(`${visao}:${dia}`);
+    if (cache) { setBrief(cache.brief); setEventos(cache.eventos); setStreak(cache.streak); setCarregando(false); }
+    else setCarregando(true);
     const [b, e, s] = await Promise.all([
       supabase.from("daily_briefs").select("*").eq("brief_date", dia).maybeSingle(),
       supabase.from("events").select("*").gte("starts_at", inicio).lte("starts_at", fim).order("starts_at"),
       supabase.from("course_streak").select("streak").maybeSingle(),
     ]);
-    setBrief((b.data as Brief) ?? null);
-    setEventos((e.data as Evento[]) ?? []);
-    setStreak(s.data?.streak ?? 0);
+    if (meuPedido !== pedidoAtual.current) return;
+    const snap: Snapshot = { brief: (b.data as Brief) ?? null, eventos: (e.data as Evento[]) ?? [], streak: s.data?.streak ?? 0 };
+    setBrief(snap.brief); setEventos(snap.eventos); setStreak(snap.streak);
+    setCarregando(false);
+    gravarCache(`${visao}:${dia}`, snap);
   }, [dia, visao]);
 
   useEffect(() => {
@@ -133,24 +156,44 @@ export default function App() {
         ))}
       </nav>
 
-      {visao === "dia" && (
-        <>
-          <Briefing brief={brief} streak={streak} />
-          <Semana dia={dia} onEscolher={setDia} />
-          <Tarefas tarefas={tarefasDoDia} onAbrir={abrir} onMudou={carregar} />
-          <Timeline
-            dia={dia}
-            eventos={naTimeline}
-            onAbrir={abrir}
-            onNovo={(horaInicial) => setEditor({ evento: null, tipo: "evento", horaInicial })}
-          />
-        </>
-      )}
-      {visao === "semana" && <VisaoSemana dia={dia} eventos={naTimeline} onAbrir={abrir} onDia={irPara} />}
-      {visao === "mes" && <VisaoMes dia={dia} eventos={eventos} onDia={irPara} />}
-      {visao === "grade" && <VisaoGrade dia={dia} eventos={eventos} onAbrir={abrir} onDia={irPara} />}
-      {visao === "lista" && <VisaoLista eventos={eventos} onAbrir={abrir} />}
-      {visao === "tobias" && <Tobias onMudouAgenda={carregar} />}
+      {/* key força remontagem ao trocar visão/dia → a animação de entrada roda de novo */}
+      <div className={`conteudo ${carregando ? "carregando" : ""}`} key={visao === "tobias" ? "tobias" : chave}>
+        {carregando && visao !== "tobias" ? (
+          <div className="skeleton">
+            <i className="sk sk-hero" /><i className="sk sk-meta" /><i className="sk sk-faixa" />
+            <i className="sk sk-bloco" /><i className="sk sk-bloco curto" /><i className="sk sk-bloco" />
+          </div>
+        ) : (
+          <>
+            {visao === "dia" && (
+              <div className="dia-layout">
+                <div className="dia-coluna-a">
+                  <Briefing brief={brief} streak={streak} />
+                  <Semana dia={dia} onEscolher={setDia} />
+                  <Tarefas tarefas={tarefasDoDia} onAbrir={abrir} onMudou={carregar} />
+                </div>
+                <div className="dia-coluna-b">
+                  <Timeline
+                    dia={dia}
+                    eventos={naTimeline}
+                    onAbrir={abrir}
+                    onNovo={(horaInicial) => setEditor({ evento: null, tipo: "evento", horaInicial })}
+                  />
+                </div>
+              </div>
+            )}
+            {visao === "semana" && <VisaoSemana dia={dia} eventos={naTimeline} onAbrir={abrir} onDia={irPara} />}
+            {visao === "mes" && <VisaoMes dia={dia} eventos={eventos} onDia={irPara} />}
+            {visao === "grade" && <VisaoGrade dia={dia} eventos={eventos} onAbrir={abrir} onDia={irPara} />}
+            {visao === "lista" && <VisaoLista eventos={eventos} onAbrir={abrir} />}
+            {visao === "tobias" && (
+              <Suspense fallback={<p className="mudo">Chamando o Tobias…</p>}>
+                <Tobias onMudouAgenda={carregar} />
+              </Suspense>
+            )}
+          </>
+        )}
+      </div>
 
       <div className={`fabs ${visao === "tobias" ? "escondido" : ""}`}>
         <button className="fab secundario" onClick={() => setVisao("tobias")}>Tobias</button>
@@ -193,7 +236,11 @@ export default function App() {
         />
       )}
 
-      {perfilAberto && <Perfil onFechar={() => setPerfilAberto(false)} />}
+      {perfilAberto && (
+        <Suspense fallback={null}>
+          <Perfil onFechar={() => setPerfilAberto(false)} />
+        </Suspense>
+      )}
 
     </main>
   );

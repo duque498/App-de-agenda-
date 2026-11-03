@@ -19,7 +19,7 @@ export function Tarefas({ tarefas, onAbrir, onMudou }: Props) {
       {ordenadas.map((t) => (
         <div key={t.id} className={`tarefa ctx-${t.context} ${t.done ? "feita" : ""}`}>
           <button className="caixa" aria-label={t.done ? "Reabrir" : "Concluir"} onClick={() => alternar(t)}>
-            {t.done && "✓"}
+            <span className="check">✓</span>
           </button>
           <button className="corpo" onClick={() => onAbrir(t)}>
             <span className="titulo">{t.title}</span>

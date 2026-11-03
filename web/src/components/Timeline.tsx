@@ -4,7 +4,8 @@ import { hora, hojeISO } from "../lib/dates";
 
 const INICIO = 7; // 07h
 const FIM = 23; // 23h
-const ALTURA_HORA = 56; // px por hora
+// px por hora; em telas largas o CSS deixa a régua maior, aqui é só a base de cálculo
+const ALTURA_HORA = 56;
 
 // Minutos desde INICIO:00 no fuso de SP, pra posicionar um instante na régua.
 function minutosDesdeInicio(ts: string | Date) {

@@ -23,7 +23,10 @@ export function pushSupported() {
 
 export async function registerSW() {
   if (!("serviceWorker" in navigator)) return null;
-  return navigator.serviceWorker.register(import.meta.env.BASE_URL + "sw.js");
+  const reg = await navigator.serviceWorker.register(import.meta.env.BASE_URL + "sw.js");
+  // Procura versão nova do SW a cada abertura; o novo assume na próxima recarga.
+  reg.update().catch(() => {});
+  return reg;
 }
 
 export async function currentSubscription() {

@@ -53,7 +53,7 @@ export function Tobias({ onMudouAgenda }: { onMudouAgenda: () => void }) {
       // Espera a primeira mensagem do assistente com id maior que a do usuário (até 3 min).
       const limite = Date.now() + 180_000;
       while (Date.now() < limite) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 1200));
         const { data: resp } = await supabase.from("chat_messages").select("id,acoes")
           .eq("role", "assistant").eq("visible", true).gt("id", userId).order("id").limit(5);
         if (resp && resp.length) {
