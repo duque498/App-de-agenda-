@@ -18,6 +18,10 @@ export type Evento = {
   all_day: boolean;
   notes: string | null;
   source: string;
+  effort: number | null;        // 0-100, estimado pela IA
+  ai_brief: string | null;
+  ai_tips: string[];
+  ai_evaluated_at: string | null;
 };
 
 export type Brief = {

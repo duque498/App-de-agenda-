@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase, type Contexto, type Evento } from "../lib/supabase";
+import { avaliarEsforco } from "../lib/assistente";
 
 const CONTEXTOS: { id: Contexto; rotulo: string }[] = [
   { id: "trabalho", rotulo: "Trabalho" },
@@ -29,7 +30,26 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
   const [context, setContext] = useState<Contexto>(evento?.context ?? "pessoal");
   const [inicio, setInicio] = useState(evento ? horaLocal(evento.starts_at) : horaInicial ?? "09:00");
   const [fim, setFim] = useState(evento ? horaLocal(evento.ends_at) : "");
+  const [notes, setNotes] = useState(evento?.notes ?? "");
   const [salvando, setSalvando] = useState(false);
+  const [avaliando, setAvaliando] = useState(false);
+  const [avaliacao, setAvaliacao] = useState<Evento | null>(evento);
+  const [erroIa, setErroIa] = useState("");
+
+  async function avaliar() {
+    if (!evento) return;
+    setAvaliando(true);
+    setErroIa("");
+    try {
+      // Salva notas antes: a IA lê o que está no banco.
+      if (notes !== (evento.notes ?? "")) await supabase.from("events").update({ notes: notes || null }).eq("id", evento.id);
+      setAvaliacao(await avaliarEsforco(evento.id));
+    } catch (e) {
+      setErroIa((e as Error).message);
+    } finally {
+      setAvaliando(false);
+    }
+  }
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -40,6 +60,7 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
       context,
       starts_at: `${dia}T${inicio}:00-03:00`,
       ends_at: fim ? `${dia}T${fim}:00-03:00` : null,
+      notes: notes.trim() || null,
     };
     const q = evento
       ? supabase.from("events").update(payload).eq("id", evento.id)
@@ -90,6 +111,42 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
             <input type="time" value={fim} onChange={(e) => setFim(e.target.value)} />
           </label>
         </div>
+
+        <textarea
+          placeholder="Notas (a IA usa isso pra avaliar o esforço)"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={2}
+        />
+
+        {evento && (
+          <section className="esforco">
+            {avaliacao?.effort != null ? (
+              <>
+                <div className="esforco-cabeca">
+                  <strong>{avaliacao.effort}% de esforço</strong>
+                  <button type="button" className="texto" onClick={avaliar} disabled={avaliando}>
+                    {avaliando ? "Avaliando…" : "Reavaliar"}
+                  </button>
+                </div>
+                <div className={`barra ${avaliacao.effort > 70 ? "alta" : avaliacao.effort > 45 ? "media" : ""}`}>
+                  <i style={{ width: `${avaliacao.effort}%` }} />
+                </div>
+                {avaliacao.ai_brief && <p className="brief">{avaliacao.ai_brief}</p>}
+                {avaliacao.ai_tips?.length > 0 && (
+                  <ul className="dicas">
+                    {avaliacao.ai_tips.map((t, i) => <li key={i}>{t}</li>)}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <button type="button" className="texto" onClick={avaliar} disabled={avaliando}>
+                {avaliando ? "Avaliando…" : "Avaliar esforço com IA"}
+              </button>
+            )}
+            {erroIa && <p className="msg erro">{erroIa}</p>}
+          </section>
+        )}
 
         <div className="acoes">
           {evento && (

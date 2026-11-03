@@ -1,0 +1,114 @@
+// Edge Function: esforco
+// Lê um evento, pede pra IA estimar o esforço (0–100), escrever um brief curto
+// e dar recomendações, e grava tudo de volta no evento.
+// Saída estruturada: forçamos o modelo a usar a ferramenta `avaliar`, então a
+// resposta vem como JSON validado pelo schema em vez de texto livre.
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const OWNER_EMAIL = "jp2575425@gmail.com";
+const MODEL = "claude-sonnet-5-5";
+
+const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+let apiKey: string | null = null;
+async function carregarApiKey() {
+  if (apiKey) return apiKey;
+  const { data, error } = await admin.rpc("get_app_secrets");
+  if (error) throw new Error(`get_app_secrets: ${error.message}`);
+  const row = (data as { name: string; value: string }[]).find((r) => r.name === "anthropic_api_key");
+  if (!row) throw new Error("anthropic_api_key ausente no Vault");
+  return (apiKey = row.value);
+}
+
+const ferramentaAvaliar = {
+  name: "avaliar",
+  description: "Registra a avaliação de esforço de um evento da agenda.",
+  input_schema: {
+    type: "object",
+    properties: {
+      effort: { type: "integer", minimum: 0, maximum: 100, description: "Esforço estimado em %, considerando duração, carga mental e contexto." },
+      brief: { type: "string", description: "Uma ou duas frases: o que é essa tarefa na prática e por que esse nível de esforço." },
+      tips: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4, description: "Recomendações concretas e curtas (quando fazer, como quebrar, o que preparar antes)." },
+    },
+    required: ["effort", "brief", "tips"],
+  },
+};
+
+Deno.serve(async (req) => {
+  const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey" };
+  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: cors });
+
+  const jwt = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
+  const { data: u, error: uErr } = await admin.auth.getUser(jwt);
+  if (uErr || u.user?.email !== OWNER_EMAIL) return new Response("Unauthorized", { status: 401, headers: cors });
+
+  const { event_id } = (await req.json()) as { event_id: string };
+  const { data: ev, error: evErr } = await admin.from("events").select("*").eq("id", event_id).single();
+  if (evErr || !ev) return Response.json({ erro: "Evento não encontrado" }, { status: 404, headers: cors });
+
+  // Contexto do dia: outros eventos ajudam a calibrar ("já tem 6h de Medweb hoje").
+  const dia = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date(ev.starts_at));
+  const { data: outros } = await admin
+    .from("events")
+    .select("title,context,starts_at,ends_at,effort")
+    .gte("starts_at", `${dia}T00:00:00-03:00`)
+    .lte("starts_at", `${dia}T23:59:59-03:00`)
+    .neq("id", event_id);
+
+  let key: string;
+  try {
+    key = await carregarApiKey();
+  } catch (e) {
+    return Response.json({ erro: (e as Error).message }, { status: 500, headers: cors });
+  }
+
+  const system = `Você avalia o esforço de tarefas da agenda do Duque: dev fullstack na Medweb (React/TS, Node, Supabase), aluno do 2º ano do ensino médio, e fazendo o curso de JavaScript do web.dev.
+Escala de esforço (%):
+- 0–20: rotina, quase automático (responder mensagem, ler e-mail).
+- 21–45: exige atenção mas é conhecido (aula, revisar PR pequena, módulo do curso).
+- 46–70: trabalho de verdade (implementar feature, prova, estudar algo novo).
+- 71–100: pesado — longo, difícil ou com pressão (entrega com prazo, debug complicado, prova decisiva).
+Considere a duração, o contexto (trabalho/escola/curso/pessoal), o que mais tem no dia e o horário.
+Brief e recomendações em português do Brasil, diretos, sem motivação barata. Recomendações devem ser acionáveis: quando fazer, como dividir, o que preparar antes, o que evitar.`;
+
+  const descricao = {
+    titulo: ev.title,
+    contexto: ev.context,
+    inicio: ev.starts_at,
+    fim: ev.ends_at,
+    dia_inteiro: ev.all_day,
+    notas: ev.notes,
+    outros_eventos_do_dia: outros ?? [],
+  };
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 600,
+      system,
+      tools: [ferramentaAvaliar],
+      tool_choice: { type: "tool", name: "avaliar" }, // obriga a resposta estruturada
+      messages: [{ role: "user", content: `Avalie este evento:\n${JSON.stringify(descricao, null, 2)}` }],
+    }),
+  });
+  if (!resp.ok) return Response.json({ erro: `Anthropic ${resp.status}: ${await resp.text()}` }, { status: 502, headers: cors });
+
+  const data = await resp.json();
+  const uso = (data.content as { type: string; input?: { effort: number; brief: string; tips: string[] } }[]).find((b) => b.type === "tool_use");
+  if (!uso?.input) return Response.json({ erro: "Modelo não devolveu avaliação" }, { status: 502, headers: cors });
+
+  const { effort, brief, tips } = uso.input;
+  const { data: salvo, error: upErr } = await admin
+    .from("events")
+    .update({ effort, ai_brief: brief, ai_tips: tips, ai_evaluated_at: new Date().toISOString() })
+    .eq("id", event_id)
+    .select()
+    .single();
+  if (upErr) return Response.json({ erro: upErr.message }, { status: 500, headers: cors });
+
+  return Response.json({ evento: salvo }, { headers: cors });
+});

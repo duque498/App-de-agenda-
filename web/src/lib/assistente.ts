@@ -25,3 +25,11 @@ export function textoDe(m: ChatMsg): string {
   }
   return "";
 }
+
+// Pede pra IA avaliar o esforço de um evento. A função grava no banco e devolve o evento atualizado.
+export async function avaliarEsforco(eventId: string) {
+  const { data, error } = await supabase.functions.invoke("esforco", { body: { event_id: eventId } });
+  if (error) throw new Error(error.message);
+  if (data?.erro) throw new Error(data.erro);
+  return data.evento as import("./supabase").Evento;
+}

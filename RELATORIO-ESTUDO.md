@@ -158,3 +158,12 @@ A chave sai de console.anthropic.com e é cobrada por uso, separado da assinatur
 - [ ] Por que mandamos o histórico inteiro de volta, incluindo `tool_result`?
 - [ ] Como a timeline calcula o `top` de um bloco?
 - [ ] Por que `translateY` e não `bottom: -100%` na gaveta?
+
+## 12. Nível de esforço (função `esforco`)
+
+- Colunas novas em `events`: `effort` (0–100, com `check`), `ai_brief`, `ai_tips` (jsonb array), `ai_evaluated_at`.
+- **Saída estruturada por `tool_choice`**: em vez de pedir "responda em JSON" e torcer, declaramos uma ferramenta `avaliar` com schema (`effort` inteiro 0–100, `brief` string, `tips` array de 1–4) e forçamos `tool_choice: { type: "tool", name: "avaliar" }`. O modelo é obrigado a preencher aquele formato; o código só lê `tool_use.input`. É o jeito certo de extrair dados de LLM.
+- A IA recebe também os **outros eventos do dia**: "implementar feature" às 20h depois de 6h de Medweb pesa mais do que às 9h num dia vazio.
+- A escala (0–20 rotina, 21–45 conhecido, 46–70 trabalho de verdade, 71–100 pesado) está no system prompt. Sem escala explícita cada chamada inventa a própria régua e os números não são comparáveis entre eventos.
+- UI: `%` no canto do bloco na timeline; no editor, barra com cor por faixa (classe `media`/`alta`), brief e dicas. As notas do evento são salvas antes de avaliar, porque a função lê do banco, não do formulário.
+- Erro meu corrigido no caminho: tentei fazer a cor da barra mudar via `background-size` no gradiente. Não funciona — `background-size` é relativo ao próprio elemento, então a barra sempre mostraria o mesmo trecho do gradiente. Classes por faixa são mais simples e previsíveis.

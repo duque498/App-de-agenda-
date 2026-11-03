@@ -82,6 +82,11 @@ export function Timeline({ dia, eventos, onAbrir, onNovo }: Props) {
                 {e.ends_at && ` – ${hora(e.ends_at)}`}
               </span>
               <span className="bloco-titulo">{e.title}</span>
+              {e.effort != null && (
+                <span className="bloco-esforco" style={{ "--pct": `${e.effort}%` } as React.CSSProperties}>
+                  {e.effort}%
+                </span>
+              )}
             </button>
           );
         })}
