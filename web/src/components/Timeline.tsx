@@ -73,7 +73,7 @@ export function Timeline({ dia, eventos, onAbrir, onNovo }: Props) {
           return (
             <button
               key={e.id}
-              className={`bloco ctx-${e.context} ${e.source === "ia" ? "da-ia" : ""}`}
+              className={`bloco ctx-${e.context} ${e.source === "ia" ? "da-ia" : ""} ${e.kind === "tarefa" ? "tarefa" : ""} ${e.done ? "feita" : ""}`}
               style={{ top, height: altura }}
               onClick={() => onAbrir(e)}
             >

@@ -48,10 +48,12 @@ const tools = [
   },
   {
     name: "criar_evento",
-    description: "Cria um bloco na agenda.",
+    description: "Cria um item na agenda: evento (ocupa horário) ou tarefa (algo a fazer no dia; hora opcional — sem hora, use all_day true e starts_at à meia-noite -03:00).",
     input_schema: {
       type: "object",
       properties: {
+        kind: { type: "string", enum: ["evento", "tarefa"], description: "padrão evento" },
+        all_day: { type: "boolean" },
         title: { type: "string" },
         context: { type: "string", enum: ["trabalho", "escola", "curso", "pessoal"] },
         starts_at: { type: "string", description: "ISO 8601 com offset, ex: 2026-11-03T14:00:00-03:00" },
@@ -96,6 +98,11 @@ const tools = [
     },
   },
   {
+    name: "concluir_tarefa",
+    description: "Marca uma tarefa como concluída (done=true) ou reabre (done=false).",
+    input_schema: { type: "object", properties: { id: { type: "string" }, done: { type: "boolean" } }, required: ["id", "done"] },
+  },
+  {
     name: "remover_evento",
     description: "Apaga um evento pelo id.",
     input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
@@ -108,7 +115,7 @@ async function executar(nome: string, input: Record<string, unknown>) {
       const dia = input.dia as string;
       const { data, error } = await admin
         .from("events")
-        .select("id,title,context,starts_at,ends_at,all_day,notes")
+        .select("id,kind,done,title,context,starts_at,ends_at,all_day,notes,effort")
         .gte("starts_at", `${dia}T00:00:00-03:00`)
         .lte("starts_at", `${dia}T23:59:59-03:00`)
         .order("starts_at");
@@ -151,6 +158,10 @@ async function executar(nome: string, input: Record<string, unknown>) {
       if (!linhas.length) return { erro: "Nenhum dia bate com os critérios." };
       const { error } = await admin.from("events").insert(linhas);
       return error ? { erro: error.message } : { criados: linhas.length, primeiro: linhas[0].starts_at, ultimo: linhas[linhas.length - 1].starts_at };
+    }
+    case "concluir_tarefa": {
+      const { data, error } = await admin.from("events").update({ done: input.done }).eq("id", input.id).select("id,title,done").single();
+      return error ? { erro: error.message } : { atualizado: data };
     }
     case "remover_evento": {
       const { error } = await admin.from("events").delete().eq("id", input.id);
@@ -196,6 +207,7 @@ Deno.serve(async (req) => {
   const system = `Você administra a agenda pessoal do Duque, dev fullstack na Medweb e aluno do ensino médio (2º ano) que também faz o curso de JavaScript do web.dev.
 Agora é ${agora} (fuso ${TZ}). Hoje é ${hojeISO}.
 Contextos possíveis: trabalho (Medweb), escola, curso (web.dev), pessoal.
+Dois tipos de item: evento (reunião, aula, bloco de trabalho — ocupa horário) e tarefa (algo a fazer no dia, ex. "responder o Kazu", "terminar issue 333" — hora opcional, pode ser concluída). "Lembra de", "preciso fazer", "tarefa" → tarefa.
 Regras:
 - Fale em português do Brasil, direto e curto. Sem floreio, sem sermão.
 - Antes de criar ou mover algo, use listar_dia pra não sobrepor blocos sem avisar.
@@ -233,7 +245,7 @@ Regras:
     for (const bloco of data.content as { type: string; id: string; name: string; input: Record<string, unknown> }[]) {
       if (bloco.type !== "tool_use") continue;
       const r = await executar(bloco.name, bloco.input);
-      if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
+      if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento", "concluir_tarefa"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
       resultados.push({ type: "tool_result", tool_use_id: bloco.id, content: JSON.stringify(r) });
     }
     historico.push({ role: "user", content: resultados });

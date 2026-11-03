@@ -338,3 +338,58 @@ button.push.ativo { color: var(--acao); }
 .tela-login form button { background: var(--acao); color: var(--fundo); padding: 14px; border-radius: var(--raio-p); font-weight: 600; }
 .tela-login .link { color: var(--texto-2); text-align: left; }
 .tela-login .msg { color: var(--pessoal); }
+
+/* ---------- tarefas ---------- */
+
+.tarefas { display: grid; gap: 6px; margin-bottom: 16px; }
+.tarefa {
+  display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: center;
+  padding: 10px 12px; border-radius: var(--raio-p);
+  background: color-mix(in srgb, var(--ctx) 8%, transparent);
+}
+.tarefa .caixa {
+  width: 24px; height: 24px; border-radius: 7px;
+  border: 1.5px solid var(--ctx); color: var(--fundo);
+  display: grid; place-items: center; font-size: 0.85rem; font-weight: 700;
+  transition: background 0.15s;
+}
+.tarefa.feita .caixa { background: var(--ctx); }
+.tarefa .corpo { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
+.tarefa .titulo { font-weight: 500; }
+.tarefa.feita .titulo { color: var(--texto-3); text-decoration: line-through; }
+.tarefa .meta { font-size: 0.78rem; color: var(--texto-2); text-transform: lowercase; }
+
+/* tarefa com hora na timeline: traço, não bloco cheio */
+.bloco.tarefa { background: transparent; border: 1.5px dashed color-mix(in srgb, var(--ctx) 55%, transparent); }
+.bloco.feita .bloco-titulo, .lista-item.feita .oque { text-decoration: line-through; color: var(--texto-3); }
+
+/* ---------- detalhe ---------- */
+
+.detalhe .rotulo-tipo { font-size: 0.8rem; color: var(--ctx); text-transform: lowercase; }
+.detalhe h2 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.015em; line-height: 1.2; }
+.detalhe h2.feita { text-decoration: line-through; color: var(--texto-2); }
+.detalhe .quando { color: var(--texto-2); font-size: 0.95rem; }
+.detalhe .quando .data { text-transform: capitalize; }
+.detalhe .notas { color: var(--texto); font-size: 0.95rem; white-space: pre-wrap; }
+.detalhe .acoes { display: flex; justify-content: flex-end; gap: 10px; }
+.detalhe .editar { background: var(--camada-2); color: var(--texto); padding: 12px 20px; border-radius: var(--raio-p); font-weight: 600; }
+.detalhe .concluir { background: var(--acao); color: var(--fundo); padding: 12px 20px; border-radius: var(--raio-p); font-weight: 600; }
+.detalhe .concluir.desfazer { background: var(--camada-2); color: var(--texto-2); }
+
+/* ---------- menu do + ---------- */
+
+.menu-novo { position: fixed; inset: 0; z-index: 6; }
+.menu-novo .opcoes {
+  position: absolute; right: 20px;
+  bottom: calc(env(safe-area-inset-bottom) + 90px);
+  display: grid; gap: 6px;
+}
+.menu-novo .opcoes button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  min-width: 220px; padding: 12px 16px; border-radius: 14px;
+  background: var(--camada); text-align: left;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+.menu-novo .opcoes small { font-size: 0.8rem; }
+.fabs .fab.aberto { transform: rotate(45deg); background: var(--camada-2); color: var(--texto); box-shadow: none; }
+.fabs .fab { transition: transform 0.2s, background 0.2s; }

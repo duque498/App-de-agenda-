@@ -9,8 +9,12 @@ export const supabase = createClient(
 
 export type Contexto = "trabalho" | "escola" | "curso" | "pessoal";
 
+export type Tipo = "evento" | "tarefa";
+
 export type Evento = {
   id: string;
+  kind: Tipo;
+  done: boolean;
   title: string;
   context: Contexto;
   starts_at: string;

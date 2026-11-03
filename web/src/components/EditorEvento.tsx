@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { supabase, type Contexto, type Evento } from "../lib/supabase";
-import { avaliarEsforco } from "../lib/assistente";
+import { supabase, type Contexto, type Evento, type Tipo } from "../lib/supabase";
 import { diaDe } from "../lib/dates";
 
 const CONTEXTOS: { id: Contexto; rotulo: string }[] = [
@@ -20,50 +19,36 @@ function horaLocal(ts: string | null) {
 type Props = {
   dia: string;
   evento: Evento | null; // null = novo
+  tipo: Tipo;
   horaInicial?: string;
   onFechar: () => void;
   onSalvo: () => void;
 };
 
-// Uma folha só para criar e editar: menos código, mesmo comportamento.
-export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Props) {
+// Uma folha só para criar e editar, evento ou tarefa. O que muda entre os dois:
+// evento tem começo e fim; tarefa tem só um "começar às" opcional.
+export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo }: Props) {
+  const tarefa = tipo === "tarefa";
   const [title, setTitle] = useState(evento?.title ?? "");
+  const [context, setContext] = useState<Contexto>(evento?.context ?? (tarefa ? "trabalho" : "pessoal"));
   const [data, setData] = useState(evento ? diaDe(evento.starts_at) : dia);
-  const [diaInteiro, setDiaInteiro] = useState(evento?.all_day ?? false);
-  const [context, setContext] = useState<Contexto>(evento?.context ?? "pessoal");
-  const [inicio, setInicio] = useState(evento ? horaLocal(evento.starts_at) : horaInicial ?? "09:00");
+  const [diaInteiro, setDiaInteiro] = useState(evento ? evento.all_day : tarefa);
+  const [inicio, setInicio] = useState(evento && !evento.all_day ? horaLocal(evento.starts_at) : horaInicial ?? "09:00");
   const [fim, setFim] = useState(evento ? horaLocal(evento.ends_at) : "");
   const [notes, setNotes] = useState(evento?.notes ?? "");
   const [salvando, setSalvando] = useState(false);
-  const [avaliando, setAvaliando] = useState(false);
-  const [avaliacao, setAvaliacao] = useState<Evento | null>(evento);
-  const [erroIa, setErroIa] = useState("");
-
-  async function avaliar() {
-    if (!evento) return;
-    setAvaliando(true);
-    setErroIa("");
-    try {
-      // Salva notas antes: a IA lê o que está no banco.
-      if (notes !== (evento.notes ?? "")) await supabase.from("events").update({ notes: notes || null }).eq("id", evento.id);
-      setAvaliacao(await avaliarEsforco(evento.id));
-    } catch (e) {
-      setErroIa((e as Error).message);
-    } finally {
-      setAvaliando(false);
-    }
-  }
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
     setSalvando(true);
     const payload = {
+      kind: tipo,
       title: title.trim(),
       context,
       all_day: diaInteiro,
       starts_at: diaInteiro ? `${data}T00:00:00-03:00` : `${data}T${inicio}:00-03:00`,
-      ends_at: diaInteiro ? null : fim ? `${data}T${fim}:00-03:00` : null,
+      ends_at: diaInteiro || tarefa ? null : fim ? `${data}T${fim}:00-03:00` : null,
       notes: notes.trim() || null,
     };
     const q = evento
@@ -86,11 +71,11 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
       <div className="gaveta-fundo" onClick={onFechar} />
       <form className="gaveta-painel editor" onSubmit={salvar}>
         <header>
-          <h2>{evento ? "Editar bloco" : "Novo bloco"}</h2>
+          <h2>{evento ? "Editar" : "Nova"} {tarefa ? "tarefa" : evento ? "evento" : "evento"}</h2>
           <button type="button" className="texto" onClick={onFechar}>Fechar</button>
         </header>
 
-        <input autoFocus placeholder="O quê?" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input autoFocus placeholder={tarefa ? "O que precisa fazer?" : "O quê?"} value={title} onChange={(e) => setTitle(e.target.value)} required />
 
         <div className="seletor-ctx">
           {CONTEXTOS.map((c) => (
@@ -111,7 +96,7 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
             <input type="date" value={data} onChange={(e) => setData(e.target.value)} required />
           </label>
           <label className="alternar">
-            Dia inteiro
+            {tarefa ? "Sem hora" : "Dia inteiro"}
             <input type="checkbox" checked={diaInteiro} onChange={(e) => setDiaInteiro(e.target.checked)} />
           </label>
         </div>
@@ -119,13 +104,15 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
         {!diaInteiro && (
           <div className="linha">
             <label>
-              Começa
+              {tarefa ? "Começar às" : "Começa"}
               <input type="time" value={inicio} onChange={(e) => setInicio(e.target.value)} required />
             </label>
-            <label>
-              Termina
-              <input type="time" value={fim} onChange={(e) => setFim(e.target.value)} />
-            </label>
+            {!tarefa && (
+              <label>
+                Termina
+                <input type="time" value={fim} onChange={(e) => setFim(e.target.value)} />
+              </label>
+            )}
           </div>
         )}
 
@@ -136,39 +123,8 @@ export function EditorEvento({ dia, evento, horaInicial, onFechar, onSalvo }: Pr
           rows={2}
         />
 
-        {evento && (
-          <section className="esforco">
-            {avaliacao?.effort != null ? (
-              <>
-                <div className="esforco-cabeca">
-                  <strong>{avaliacao.effort}% de esforço</strong>
-                  <button type="button" className="texto" onClick={avaliar} disabled={avaliando}>
-                    {avaliando ? "Avaliando…" : "Reavaliar"}
-                  </button>
-                </div>
-                <div className={`barra ${avaliacao.effort > 70 ? "alta" : avaliacao.effort > 45 ? "media" : ""}`}>
-                  <i style={{ width: `${avaliacao.effort}%` }} />
-                </div>
-                {avaliacao.ai_brief && <p className="brief">{avaliacao.ai_brief}</p>}
-                {avaliacao.ai_tips?.length > 0 && (
-                  <ul className="dicas">
-                    {avaliacao.ai_tips.map((t, i) => <li key={i}>{t}</li>)}
-                  </ul>
-                )}
-              </>
-            ) : (
-              <button type="button" className="texto" onClick={avaliar} disabled={avaliando}>
-                {avaliando ? "Avaliando…" : "Avaliar esforço com IA"}
-              </button>
-            )}
-            {erroIa && <p className="msg erro">{erroIa}</p>}
-          </section>
-        )}
-
         <div className="acoes">
-          {evento && (
-            <button type="button" className="texto perigo" onClick={remover}>Remover</button>
-          )}
+          {evento && <button type="button" className="texto perigo" onClick={remover}>Remover</button>}
           <button disabled={salvando}>{evento ? "Salvar" : "Criar"}</button>
         </div>
       </form>

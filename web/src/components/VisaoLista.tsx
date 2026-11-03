@@ -28,9 +28,9 @@ export function VisaoLista({ eventos, onAbrir }: Props) {
         <div key={d} className="lista-dia">
           <h3 className={d === hoje ? "hoje" : ""}>{d === hoje ? "Hoje" : formatarDia(d)}</h3>
           {grupos.get(d)!.map((e) => (
-            <button key={e.id} className={`lista-item ctx-${e.context}`} onClick={() => onAbrir(e)}>
+            <button key={e.id} className={`lista-item ctx-${e.context} ${e.kind === "tarefa" ? "tarefa" : ""} ${e.done ? "feita" : ""}`} onClick={() => onAbrir(e)}>
               <span className="quando">
-                {e.all_day ? "dia todo" : hora(e.starts_at)}
+                {e.all_day ? (e.kind === "tarefa" ? "tarefa" : "dia todo") : hora(e.starts_at)}
                 {!e.all_day && e.ends_at && <small>{hora(e.ends_at)}</small>}
               </span>
               <span className="oque">

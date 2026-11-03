@@ -179,3 +179,11 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - **Visão preferida persiste em `localStorage`** com try/catch — em modo privado o acesso pode lançar erro.
 - **Editor ganhou Data e Dia inteiro**: `all_day` grava `starts_at` à meia-noite de SP e `ends_at` nulo; a timeline mostra dia-inteiro como chips acima da régua.
 - **Dois botões flutuantes**: "+" (ação principal, como no Google) e "Mudar o dia" (chat). Primário maior, secundário discreto.
+
+## 14. Detalhe, tarefas e o menu do +
+
+- **Ler ≠ editar.** Tocar num item abre `Detalhe` (folha de leitura: título, quando, notas, esforço, brief, dicas). "Editar" leva ao formulário. Separar os dois evita formulário aberto por engano e dá lugar pro conteúdo da IA respirar.
+- **Tarefa é uma linha de `events` com `kind = 'tarefa'`**, não uma tabela nova. O que ela tem a mais é `done`. Por quê: 90% do que precisa (contexto, data, notas, esforço, RLS, ferramentas da IA) é igual; uma tabela separada duplicaria tudo isso. `check (kind in (...))` garante que só esses dois valores entram.
+- Tarefa **sem hora** = `all_day = true` com `starts_at` à meia-noite de SP; aparece só na lista de tarefas do dia. Tarefa **com hora** aparece também na timeline, tracejada, pra não parecer um bloco que ocupa tempo.
+- O "+" abre um menu de duas opções em vez de criar direto. Custo: um toque a mais. Ganho: o editor abre já no modo certo, sem um seletor "evento/tarefa" dentro do formulário.
+- IA: `criar_evento` ganhou `kind` e `all_day`; `listar_dia` devolve `kind`/`done`; `concluir_tarefa` novo. O system prompt ensina a regra de bolso: "lembra de", "preciso fazer" → tarefa.

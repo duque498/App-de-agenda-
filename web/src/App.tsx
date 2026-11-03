@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { supabase, type Brief, type Evento } from "./lib/supabase";
+import { supabase, type Brief, type Evento, type Tipo } from "./lib/supabase";
 import { addDias, formatarDia, gradeDoMes, hojeISO, inicioDaSemana, limitesDoDia, mesAno } from "./lib/dates";
 import { Login } from "./components/Login";
 import { Briefing } from "./components/Briefing";
@@ -10,11 +10,13 @@ import { VisaoSemana } from "./components/VisaoSemana";
 import { VisaoMes } from "./components/VisaoMes";
 import { VisaoLista } from "./components/VisaoLista";
 import { EditorEvento } from "./components/EditorEvento";
+import { Detalhe } from "./components/Detalhe";
+import { Tarefas } from "./components/Tarefas";
 import { Chat } from "./components/Chat";
 import { PushToggle } from "./components/PushToggle";
 
 type Visao = "dia" | "semana" | "mes" | "lista";
-type Editor = { evento: Evento | null; horaInicial?: string } | null;
+type Editor = { evento: Evento | null; tipo: Tipo; horaInicial?: string } | null;
 
 const VISOES: { id: Visao; rotulo: string }[] = [
   { id: "dia", rotulo: "Dia" },
@@ -45,6 +47,8 @@ export default function App() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [streak, setStreak] = useState<number | null>(null);
   const [editor, setEditor] = useState<Editor>(null);
+  const [detalhe, setDetalhe] = useState<Evento | null>(null);
+  const [menuNovo, setMenuNovo] = useState(false);
   const [chatAberto, setChatAberto] = useState(false);
 
   useEffect(() => {
@@ -84,6 +88,10 @@ export default function App() {
 
   const ehHoje = dia === hojeISO();
   const irPara = (d: string) => { setDia(d); setVisao("dia"); };
+  const abrir = (e: Evento) => setDetalhe(e);
+  // Na timeline entram eventos e tarefas com hora marcada; tarefas sem hora ficam só na lista do dia.
+  const naTimeline = eventos.filter((e) => e.kind === "evento" || !e.all_day);
+  const tarefasDoDia = eventos.filter((e) => e.kind === "tarefa");
 
   // Título e navegação mudam com a visão: passo de 1 dia, 7 dias ou 1 mês.
   const titulo =
@@ -120,30 +128,56 @@ export default function App() {
         <>
           <Briefing brief={brief} streak={streak} />
           <Semana dia={dia} onEscolher={setDia} />
+          <Tarefas tarefas={tarefasDoDia} onAbrir={abrir} onMudou={carregar} />
           <Timeline
             dia={dia}
-            eventos={eventos}
-            onAbrir={(evento) => setEditor({ evento })}
-            onNovo={(horaInicial) => setEditor({ evento: null, horaInicial })}
+            eventos={naTimeline}
+            onAbrir={abrir}
+            onNovo={(horaInicial) => setEditor({ evento: null, tipo: "evento", horaInicial })}
           />
         </>
       )}
-      {visao === "semana" && <VisaoSemana dia={dia} eventos={eventos} onAbrir={(evento) => setEditor({ evento })} onDia={irPara} />}
+      {visao === "semana" && <VisaoSemana dia={dia} eventos={naTimeline} onAbrir={abrir} onDia={irPara} />}
       {visao === "mes" && <VisaoMes dia={dia} eventos={eventos} onDia={irPara} />}
-      {visao === "lista" && <VisaoLista eventos={eventos} onAbrir={(evento) => setEditor({ evento })} />}
+      {visao === "lista" && <VisaoLista eventos={eventos} onAbrir={abrir} />}
 
       <div className="fabs">
         <button className="fab secundario" onClick={() => setChatAberto(true)}>Mudar o dia</button>
-        <button className="fab" onClick={() => setEditor({ evento: null })} aria-label="Novo bloco">+</button>
+        <button className={`fab ${menuNovo ? "aberto" : ""}`} onClick={() => setMenuNovo(!menuNovo)} aria-label="Criar">+</button>
       </div>
+
+      {menuNovo && (
+        <div className="menu-novo" onClick={() => setMenuNovo(false)}>
+          <div className="opcoes" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => { setMenuNovo(false); setEditor({ evento: null, tipo: "evento" }); }}>
+              <strong>Evento</strong>
+              <small>Ocupa um horário na timeline</small>
+            </button>
+            <button onClick={() => { setMenuNovo(false); setEditor({ evento: null, tipo: "tarefa" }); }}>
+              <strong>Tarefa</strong>
+              <small>Algo a fazer no dia, hora opcional</small>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {detalhe && !editor && (
+        <Detalhe
+          evento={detalhe}
+          onFechar={() => setDetalhe(null)}
+          onEditar={() => setEditor({ evento: detalhe, tipo: detalhe.kind })}
+          onMudou={carregar}
+        />
+      )}
 
       {editor && (
         <EditorEvento
           dia={dia}
           evento={editor.evento}
+          tipo={editor.tipo}
           horaInicial={editor.horaInicial}
           onFechar={() => setEditor(null)}
-          onSalvo={() => { setEditor(null); carregar(); }}
+          onSalvo={() => { setEditor(null); setDetalhe(null); carregar(); }}
         />
       )}
 
