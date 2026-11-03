@@ -82,6 +82,7 @@ Escala de esforço (%):
 - 46–70: trabalho de verdade (implementar feature, prova, estudar algo novo).
 - 71–100: pesado — longo, difícil ou com pressão (entrega com prazo, debug complicado, prova decisiva).
 Considere a duração, o contexto (trabalho/escola/curso/pessoal), o que mais tem no dia e o horário.
+Responda SEMPRE chamando a ferramenta avaliar, nunca em texto livre.
 Brief e recomendações em português do Brasil, diretos, sem motivação barata. Recomendações devem ser acionáveis: quando fazer, como dividir, o que preparar antes, o que evitar.`;
 
   const descricao = {
@@ -97,26 +98,31 @@ Brief e recomendações em português do Brasil, diretos, sem motivação barata
     avaliacoes_anteriores: anteriores,
   };
 
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 600,
-      system,
-      tools: [ferramentaAvaliar],
-      tool_choice: { type: "tool", name: "avaliar" }, // obriga a resposta estruturada
-      messages: [{ role: "user", content: `Avalie este evento:\n${JSON.stringify(descricao, null, 2)}` }],
-    }),
-  });
-  if (!resp.ok) {
-    const corpo = await resp.text();
-    console.error("anthropic", resp.status, corpo);
-    return Response.json({ erro: `Anthropic ${resp.status}: ${corpo}` }, { status: 502, headers: cors });
+  // Este modelo não aceita tool_choice forçado; a instrução no prompt faz o papel,
+  // e se ele responder em texto a gente insiste uma vez.
+  const mensagens: { role: string; content: unknown }[] = [
+    { role: "user", content: `Avalie este evento usando a ferramenta avaliar (não responda em texto):\n${JSON.stringify(descricao, null, 2)}` },
+  ];
+  type Bloco = { type: string; input?: { effort: number; brief: string; tips: string[] } };
+  let uso: Bloco | undefined;
+  for (let tentativa = 0; tentativa < 2 && !uso; tentativa++) {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: 600, system, tools: [ferramentaAvaliar], messages: mensagens }),
+    });
+    if (!resp.ok) {
+      const corpo = await resp.text();
+      console.error("anthropic", resp.status, corpo);
+      return Response.json({ erro: `Anthropic ${resp.status}: ${corpo}` }, { status: 502, headers: cors });
+    }
+    const data = await resp.json();
+    uso = (data.content as Bloco[]).find((b) => b.type === "tool_use");
+    if (!uso) {
+      mensagens.push({ role: "assistant", content: data.content });
+      mensagens.push({ role: "user", content: "Registre a avaliação chamando a ferramenta avaliar." });
+    }
   }
-
-  const data = await resp.json();
-  const uso = (data.content as { type: string; input?: { effort: number; brief: string; tips: string[] } }[]).find((b) => b.type === "tool_use");
   if (!uso?.input) return Response.json({ erro: "Modelo não devolveu avaliação" }, { status: 502, headers: cors });
 
   const effort = Math.max(0, Math.min(100, Math.round(Number(uso.input.effort))));
