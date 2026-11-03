@@ -78,6 +78,24 @@ const tools = [
     },
   },
   {
+    name: "criar_serie",
+    description: "Cria o mesmo bloco em vários dias de uma vez (ex.: escola de segunda a sexta até dezembro). Use isto em vez de criar_evento repetido.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        context: { type: "string", enum: ["trabalho", "escola", "curso", "pessoal"] },
+        hora_inicio: { type: "string", description: "HH:MM" },
+        hora_fim: { type: "string", description: "HH:MM ou null" },
+        dias_semana: { type: "array", items: { type: "integer", minimum: 0, maximum: 6 }, description: "0=domingo … 6=sábado. Dias úteis = [1,2,3,4,5]" },
+        de: { type: "string", description: "YYYY-MM-DD, primeiro dia" },
+        ate: { type: "string", description: "YYYY-MM-DD, último dia (máx. ~90 dias à frente)" },
+        notes: { type: "string" },
+      },
+      required: ["title", "context", "hora_inicio", "dias_semana", "de", "ate"],
+    },
+  },
+  {
     name: "remover_evento",
     description: "Apaga um evento pelo id.",
     input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
@@ -113,6 +131,27 @@ async function executar(nome: string, input: Record<string, unknown>) {
       const { data, error } = await admin.from("events").update(campos).eq("id", id).select().single();
       return error ? { erro: error.message } : { atualizado: data };
     }
+    case "criar_serie": {
+      const { title, context, hora_inicio, hora_fim, dias_semana, de, ate, notes } = input as {
+        title: string; context: string; hora_inicio: string; hora_fim?: string | null;
+        dias_semana: number[]; de: string; ate: string; notes?: string;
+      };
+      const linhas: Record<string, unknown>[] = [];
+      const [y, m, d] = de.split("-").map(Number);
+      const fim = new Date(`${ate}T12:00:00Z`);
+      for (let cur = new Date(Date.UTC(y, m - 1, d)); cur <= fim && linhas.length < 120; cur.setUTCDate(cur.getUTCDate() + 1)) {
+        if (!dias_semana.includes(cur.getUTCDay())) continue;
+        const iso = cur.toISOString().slice(0, 10);
+        linhas.push({
+          title, context, notes: notes ?? null, source: "ia",
+          starts_at: `${iso}T${hora_inicio}:00-03:00`,
+          ends_at: hora_fim ? `${iso}T${hora_fim}:00-03:00` : null,
+        });
+      }
+      if (!linhas.length) return { erro: "Nenhum dia bate com os critérios." };
+      const { error } = await admin.from("events").insert(linhas);
+      return error ? { erro: error.message } : { criados: linhas.length, primeiro: linhas[0].starts_at, ultimo: linhas[linhas.length - 1].starts_at };
+    }
     case "remover_evento": {
       const { error } = await admin.from("events").delete().eq("id", input.id);
       return error ? { erro: error.message } : { removido: input.id };
@@ -129,7 +168,7 @@ type Msg = { role: "user" | "assistant"; content: unknown };
 Deno.serve(async (req) => {
   const cors = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, content-type, apikey",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: cors });
@@ -163,7 +202,8 @@ Regras:
 - Horários sempre em ISO com offset -03:00. "Amanhã", "sexta" etc. você resolve a partir de hoje.
 - Se a pessoa pedir pra "organizar o dia", leia ler_resumo e listar_dia primeiro e proponha blocos concretos; só crie depois de ela confirmar, a não ser que ela já tenha mandado criar.
 - Depois de agir, confirme em uma linha o que mudou. Não repita a lista inteira.
-- Se faltar informação essencial (que horas?), pergunte em uma frase.`;
+- Se faltar informação essencial (que horas?), pergunte em uma frase.
+- Pra algo que se repete (aula toda semana, escola em dias úteis) use criar_serie. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.`;
 
   const historico: Msg[] = [...messages].slice(-20);
   const acoes: string[] = [];
@@ -193,7 +233,7 @@ Regras:
     for (const bloco of data.content as { type: string; id: string; name: string; input: Record<string, unknown> }[]) {
       if (bloco.type !== "tool_use") continue;
       const r = await executar(bloco.name, bloco.input);
-      if (["criar_evento", "atualizar_evento", "remover_evento"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
+      if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
       resultados.push({ type: "tool_result", tool_use_id: bloco.id, content: JSON.stringify(r) });
     }
     historico.push({ role: "user", content: resultados });
