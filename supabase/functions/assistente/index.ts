@@ -25,6 +25,26 @@ async function carregarApiKey() {
   return apiKey;
 }
 
+// ---------- esforço automático ----------
+// Reusa a função esforco (mesma lógica, mesmo perfil, mesma calibração) em vez de duplicar.
+// Precisa do JWT do dono porque esforco confere o e-mail. Falha ali não derruba a criação.
+let jwtAtual = "";
+async function avaliar(eventId: string) {
+  try {
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/esforco`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${jwtAtual}`, apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "" },
+      body: JSON.stringify({ event_id: eventId }),
+    });
+    if (!r.ok) { console.warn("esforco falhou", r.status, await r.text()); return null; }
+    const { evento } = await r.json();
+    return evento as { effort: number; ai_brief: string; ai_tips: string[] } | undefined;
+  } catch (e) {
+    console.warn("esforco erro", e);
+    return null;
+  }
+}
+
 // ---------- ferramentas ----------
 
 const tools = [
@@ -132,7 +152,9 @@ async function executar(nome: string, input: Record<string, unknown>) {
         .insert({ ...input, source: "ia" })
         .select("id,title,starts_at,ends_at,context")
         .single();
-      return error ? { erro: error.message } : { criado: data };
+      if (error) return { erro: error.message };
+      const av = await avaliar(data.id);
+      return { criado: data, esforco: av ? av.effort : "não avaliado" };
     }
     case "atualizar_evento": {
       const { id, ...campos } = input;
@@ -161,8 +183,18 @@ async function executar(nome: string, input: Record<string, unknown>) {
         });
       }
       if (!linhas.length) return { erro: "Nenhum dia bate com os critérios." };
-      const { error } = await admin.from("events").insert(linhas);
-      return error ? { erro: error.message } : { criados: linhas.length, primeiro: linhas[0].starts_at, ultimo: linhas[linhas.length - 1].starts_at };
+      const { data: criados, error } = await admin.from("events").insert(linhas).select("id");
+      if (error) return { erro: error.message };
+      // Avalia só o primeiro e copia: é o mesmo item repetido, a avaliação é a mesma.
+      let esforco: number | string = "não avaliado";
+      const av = criados?.length ? await avaliar(criados[0].id) : null;
+      if (av && criados) {
+        esforco = av.effort;
+        await admin.from("events")
+          .update({ effort: av.effort, ai_brief: av.ai_brief, ai_tips: av.ai_tips, ai_evaluated_at: new Date().toISOString() })
+          .in("id", criados.slice(1).map((c) => c.id));
+      }
+      return { criados: linhas.length, primeiro: linhas[0].starts_at, ultimo: linhas[linhas.length - 1].starts_at, esforco };
     }
     case "concluir_tarefa": {
       const { data, error } = await admin.from("events").update({ done: input.done }).eq("id", input.id).select("id,title,done").single();
@@ -191,6 +223,7 @@ Deno.serve(async (req) => {
 
   // Camada 2: quem é o usuário desse JWT?
   const jwt = req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
+  jwtAtual = jwt;
   const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
   if (userErr || userData.user?.email !== OWNER_EMAIL) {
     return new Response("Unauthorized", { status: 401, headers: cors });

@@ -9,6 +9,7 @@ import { Timeline } from "./components/Timeline";
 import { VisaoSemana } from "./components/VisaoSemana";
 import { VisaoMes } from "./components/VisaoMes";
 import { VisaoLista } from "./components/VisaoLista";
+import { VisaoGrade } from "./components/VisaoGrade";
 import { EditorEvento } from "./components/EditorEvento";
 import { Detalhe } from "./components/Detalhe";
 import { Tarefas } from "./components/Tarefas";
@@ -16,13 +17,14 @@ import { Perfil } from "./components/Perfil";
 import { Chat } from "./components/Chat";
 import { PushToggle } from "./components/PushToggle";
 
-type Visao = "dia" | "semana" | "mes" | "lista";
+type Visao = "dia" | "semana" | "mes" | "grade" | "lista";
 type Editor = { evento: Evento | null; tipo: Tipo; horaInicial?: string } | null;
 
 const VISOES: { id: Visao; rotulo: string }[] = [
   { id: "dia", rotulo: "Dia" },
   { id: "semana", rotulo: "Semana" },
   { id: "mes", rotulo: "Mês" },
+  { id: "grade", rotulo: "Grade" },
   { id: "lista", rotulo: "Lista" },
 ];
 
@@ -37,6 +39,7 @@ function intervalo(visao: Visao, dia: string): { inicio: string; fim: string } {
     const { dias } = gradeDoMes(dia);
     return { inicio: limitesDoDia(dias[0]).inicio, fim: limitesDoDia(dias[41]).fim };
   }
+  if (visao === "grade") return { inicio: limitesDoDia(dia).inicio, fim: limitesDoDia(addDias(dia, 13)).fim };
   return { inicio: limitesDoDia(hojeISO()).inicio, fim: limitesDoDia(addDias(hojeISO(), 14)).fim };
 }
 
@@ -99,9 +102,10 @@ export default function App() {
   const titulo =
     visao === "mes" ? mesAno(dia)
     : visao === "lista" ? "Próximos dias"
+    : visao === "grade" ? `A partir de ${Number(dia.slice(8))}`
     : visao === "semana" ? `Semana de ${Number(inicioDaSemana(dia).slice(8))}`
     : ehHoje ? "Hoje" : formatarDia(dia).split(",")[0];
-  const passo = visao === "semana" ? 7 : visao === "mes" ? 30 : 1;
+  const passo = visao === "semana" ? 7 : visao === "mes" ? 30 : visao === "grade" ? 14 : 1;
 
   return (
     <main className="app">
@@ -142,6 +146,7 @@ export default function App() {
       )}
       {visao === "semana" && <VisaoSemana dia={dia} eventos={naTimeline} onAbrir={abrir} onDia={irPara} />}
       {visao === "mes" && <VisaoMes dia={dia} eventos={eventos} onDia={irPara} />}
+      {visao === "grade" && <VisaoGrade dia={dia} eventos={eventos} onAbrir={abrir} onDia={irPara} />}
       {visao === "lista" && <VisaoLista eventos={eventos} onAbrir={abrir} />}
 
       <div className="fabs">

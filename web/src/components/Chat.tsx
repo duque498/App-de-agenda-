@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { perguntar, textoDe, type ChatMsg } from "../lib/assistente";
+import { Md } from "./Md";
 
 type Props = { aberto: boolean; onFechar: () => void; onMudouAgenda: () => void };
 
@@ -54,9 +55,13 @@ export function Chat({ aberto, onFechar, onMudouAgenda }: Props) {
               ))}
             </div>
           )}
-          {visiveis.map((m, i) => (
-            <p key={i} className={`msg ${m.role}`}>{m.texto}</p>
-          ))}
+          {visiveis.map((m, i) =>
+            m.role === "assistant" ? (
+              <Md key={i} texto={m.texto} className="msg assistant" />
+            ) : (
+              <p key={i} className={`msg ${m.role}`}>{m.texto}</p>
+            ),
+          )}
           {pensando && <p className="msg assistant pensando">…</p>}
           {erro && <p className="msg erro">{erro}</p>}
           <div ref={fim} />

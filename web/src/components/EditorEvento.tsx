@@ -124,7 +124,7 @@ export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo
         )}
 
         <textarea
-          placeholder="Notas (a IA usa isso pra avaliar o esforço)"
+          placeholder="Notas — aceita Markdown (**negrito**, - listas). A IA usa isso pra avaliar."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}

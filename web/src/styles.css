@@ -399,3 +399,39 @@ button.push.ativo { color: var(--acao); }
 .perfil .acoes { display: flex; justify-content: flex-end; }
 .perfil .salvar { background: var(--acao); color: var(--fundo); padding: 12px 22px; border-radius: var(--raio-p); font-weight: 600; }
 .perfil .salvar:disabled { opacity: 0.6; }
+
+/* ---------- markdown ---------- */
+.md p { margin: 0 0 8px; }
+.md p:last-child { margin-bottom: 0; }
+.md ul, .md ol { margin: 4px 0 8px; padding-left: 20px; }
+.md li { margin: 2px 0; }
+.md strong { font-weight: 600; color: var(--texto); }
+.md em { color: var(--texto-2); }
+.md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em; background: var(--camada-2); padding: 1px 5px; border-radius: 5px; }
+.md pre { background: var(--camada-2); padding: 10px 12px; border-radius: var(--raio-p); overflow-x: auto; font-size: 0.85rem; }
+.md pre code { background: none; padding: 0; }
+.md a { color: var(--acao); text-decoration: none; }
+.md h1, .md h2, .md h3 { font-size: 1rem; font-weight: 600; margin: 10px 0 4px; }
+.md blockquote { margin: 6px 0; padding-left: 12px; border-left: 2px solid var(--linha); color: var(--texto-2); }
+.md hr { border: 0; border-top: 1px solid var(--linha); margin: 10px 0; }
+.sugestao.md strong { color: var(--acao); }
+.dicas .md p { margin: 0; }
+
+/* ---------- grade ---------- */
+.grade-view { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cartao { background: var(--camada); border-radius: var(--raio-p); padding: 10px 10px 12px; display: grid; gap: 4px; align-content: start; min-height: 96px; }
+.cartao header { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; cursor: pointer; }
+.cartao header span { font-size: 0.72rem; color: var(--texto-3); text-transform: lowercase; }
+.cartao header strong { font-size: 1.05rem; font-weight: 600; }
+.cartao.hoje header strong { color: var(--acao); }
+.cartao .mudo { font-size: 0.8rem; }
+.cartao .item {
+  display: flex; gap: 6px; align-items: baseline; text-align: left;
+  padding: 4px 7px; border-radius: 6px;
+  background: color-mix(in srgb, var(--ctx) 12%, transparent);
+  font-size: 0.78rem; line-height: 1.25;
+}
+.cartao .item .h { color: var(--ctx); font-variant-numeric: tabular-nums; flex: 0 0 auto; font-size: 0.7rem; }
+.cartao .item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cartao .item.tarefa { background: transparent; border: 1px dashed color-mix(in srgb, var(--ctx) 50%, transparent); }
+.cartao .item.feita .t { text-decoration: line-through; color: var(--texto-3); }

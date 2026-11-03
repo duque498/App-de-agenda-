@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase, type Evento } from "../lib/supabase";
 import { avaliarEsforco } from "../lib/assistente";
 import { formatarDia, hora, diaDe } from "../lib/dates";
+import { Md } from "./Md";
 
 const ROTULO = { trabalho: "Trabalho", escola: "Escola", curso: "Curso", pessoal: "Pessoal" };
 
@@ -53,7 +54,7 @@ export function Detalhe({ evento, onFechar, onEditar, onMudou }: Props) {
           {tarefa && ev.all_day && " · sem hora marcada"}
         </p>
 
-        {ev.notes && <p className="notas">{ev.notes}</p>}
+        {ev.notes && <Md texto={ev.notes} className="notas" />}
 
         <section className="esforco">
           {ev.effort != null ? (
@@ -67,9 +68,9 @@ export function Detalhe({ evento, onFechar, onEditar, onMudou }: Props) {
               <div className={`barra ${ev.effort > 70 ? "alta" : ev.effort > 45 ? "media" : ""}`}>
                 <i style={{ width: `${ev.effort}%` }} />
               </div>
-              {ev.ai_brief && <p className="brief">{ev.ai_brief}</p>}
+              {ev.ai_brief && <Md texto={ev.ai_brief} className="brief" />}
               {ev.ai_tips?.length > 0 && (
-                <ul className="dicas">{ev.ai_tips.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                <ul className="dicas">{ev.ai_tips.map((t, i) => <li key={i}><Md texto={t} /></li>)}</ul>
               )}
             </>
           ) : (

@@ -196,3 +196,11 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - `Promise.allSettled` em vez de `Promise.all`: perfil, histórico e resumo são opcionais; se um falhar, a avaliação segue. Só a chave da API é obrigatória, e é a única cuja rejeição vira erro.
 - **Avaliação automática ao criar**: o editor fecha na hora e dispara `avaliarEsforco` em segundo plano; quando volta, `onAvaliado` recarrega e a % aparece. Erro ali é `console.warn`, nunca bloqueia o salvar — a tarefa já está criada, a IA é extra.
 - Bug de nome que o TypeScript pegou: `data` era o estado da data do formulário e também o retorno da query. Renomeei pra `salvo`. Nomes genéricos (`data`, `result`) são onde esse tipo de colisão nasce.
+
+## 16. Markdown, visão Grade e avaliação automática pelo chat
+
+- **Markdown com sanitização**: `marked` converte, `DOMPurify` limpa antes de `dangerouslySetInnerHTML`. Mesmo texto vindo da própria IA ou das tuas notas passa pelo sanitizador — HTML cru de qualquer origem nunca entra direto no DOM. Entra em: respostas do chat, sugestão do dia, brief, dicas e notas.
+- **Visão Grade**: 14 dias a partir do dia escolhido, dois cartões por linha, itens por título (até 6 por dia, "+n" além disso). Mês fica com pontos porque na tela do celular não cabe título em 42 células.
+- **Esforço automático também pelo chat**: `criar_evento` e `criar_serie` agora chamam a função `esforco` por HTTP, com o mesmo JWT do dono (ela confere o e-mail). Reusar a função em vez de copiar a lógica garante que avaliação manual, do editor e do chat sejam idênticas (mesmo perfil, mesma calibração).
+- **Série avalia uma vez e copia**: 40 "Escola" idênticos não precisam de 40 chamadas; avalia o primeiro e replica `effort/brief/tips` nos outros com um `update ... in (ids)`. Custo cai de O(n) pra O(1) chamadas de IA.
+- Falha na avaliação não derruba a criação: `avaliar()` engole o erro e devolve `null`; o item existe, só fica sem %.

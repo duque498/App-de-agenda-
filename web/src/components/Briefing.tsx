@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Brief } from "../lib/supabase";
+import { Md } from "./Md";
 
 // O herói da tela: a sugestão do dia em destaque. Detalhes ficam dobrados.
 export function Briefing({ brief, streak }: { brief: Brief | null; streak: number | null }) {
@@ -22,7 +23,7 @@ export function Briefing({ brief, streak }: { brief: Brief | null; streak: numbe
 
   return (
     <section className="briefing">
-      <p className="sugestao">{brief.suggestion || "Sem sugestão hoje."}</p>
+      <Md texto={brief.suggestion || "Sem sugestão hoje."} className="sugestao" />
 
       <p className="linha-meta">
         {pendencias === 0 ? "Nada pendente na Medweb" : `${pendencias} ${pendencias === 1 ? "pendência" : "pendências"} na Medweb`}
