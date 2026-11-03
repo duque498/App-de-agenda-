@@ -187,3 +187,11 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - Tarefa **sem hora** = `all_day = true` com `starts_at` à meia-noite de SP; aparece só na lista de tarefas do dia. Tarefa **com hora** aparece também na timeline, tracejada, pra não parecer um bloco que ocupa tempo.
 - O "+" abre um menu de duas opções em vez de criar direto. Custo: um toque a mais. Ganho: o editor abre já no modo certo, sem um seletor "evento/tarefa" dentro do formulário.
 - IA: `criar_evento` ganhou `kind` e `all_day`; `listar_dia` devolve `kind`/`done`; `concluir_tarefa` novo. O system prompt ensina a regra de bolso: "lembra de", "preciso fazer" → tarefa.
+
+## 15. Perfil e avaliação automática
+
+- A Edge Function **não** tem acesso à memória do claude.ai (não existe API pra isso). O equivalente controlável é a tabela `perfil` (uma linha, `id = 1` com `check`), que o Duque edita em "Sobre mim" e que entra no system prompt das duas funções de IA.
+- `esforco` agora recebe também: as últimas 12 avaliações (título, contexto, %, brief) pra **manter coerência** — sem isso cada avaliação é independente e a mesma tarefa ganha 40% num dia e 65% no outro — e o resumo das 14h do dia.
+- `Promise.allSettled` em vez de `Promise.all`: perfil, histórico e resumo são opcionais; se um falhar, a avaliação segue. Só a chave da API é obrigatória, e é a única cuja rejeição vira erro.
+- **Avaliação automática ao criar**: o editor fecha na hora e dispara `avaliarEsforco` em segundo plano; quando volta, `onAvaliado` recarrega e a % aparece. Erro ali é `console.warn`, nunca bloqueia o salvar — a tarefa já está criada, a IA é extra.
+- Bug de nome que o TypeScript pegou: `data` era o estado da data do formulário e também o retorno da query. Renomeei pra `salvo`. Nomes genéricos (`data`, `result`) são onde esse tipo de colisão nasce.

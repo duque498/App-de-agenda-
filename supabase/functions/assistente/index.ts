@@ -199,12 +199,18 @@ Deno.serve(async (req) => {
   }
 
   const { messages } = (await req.json()) as { messages: Msg[] };
+  const { data: perfilRow } = await admin.from("perfil").select("texto").eq("id", 1).maybeSingle();
+  const perfil = perfilRow?.texto ?? "";
   const agora = new Intl.DateTimeFormat("pt-BR", {
     timeZone: TZ, dateStyle: "full", timeStyle: "short",
   }).format(new Date());
   const hojeISO = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
 
-  const system = `Você administra a agenda pessoal do Duque, dev fullstack na Medweb e aluno do ensino médio (2º ano) que também faz o curso de JavaScript do web.dev.
+  const system = `Você administra a agenda pessoal do Duque.
+
+SOBRE ELE (escrito por ele; use pra decidir contexto, horários e prioridades):
+${perfil || "(sem perfil)"}
+
 Agora é ${agora} (fuso ${TZ}). Hoje é ${hojeISO}.
 Contextos possíveis: trabalho (Medweb), escola, curso (web.dev), pessoal.
 Dois tipos de item: evento (reunião, aula, bloco de trabalho — ocupa horário) e tarefa (algo a fazer no dia, ex. "responder o Kazu", "terminar issue 333" — hora opcional, pode ser concluída). "Lembra de", "preciso fazer", "tarefa" → tarefa.

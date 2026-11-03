@@ -12,6 +12,7 @@ import { VisaoLista } from "./components/VisaoLista";
 import { EditorEvento } from "./components/EditorEvento";
 import { Detalhe } from "./components/Detalhe";
 import { Tarefas } from "./components/Tarefas";
+import { Perfil } from "./components/Perfil";
 import { Chat } from "./components/Chat";
 import { PushToggle } from "./components/PushToggle";
 
@@ -49,6 +50,7 @@ export default function App() {
   const [editor, setEditor] = useState<Editor>(null);
   const [detalhe, setDetalhe] = useState<Evento | null>(null);
   const [menuNovo, setMenuNovo] = useState(false);
+  const [perfilAberto, setPerfilAberto] = useState(false);
   const [chatAberto, setChatAberto] = useState(false);
 
   useEffect(() => {
@@ -114,6 +116,7 @@ export default function App() {
         </div>
         <div className="cabecalho-acoes">
           <PushToggle />
+          <button className="texto" onClick={() => setPerfilAberto(true)}>Sobre mim</button>
           <button className="texto" onClick={() => supabase.auth.signOut()}>Sair</button>
         </div>
       </header>
@@ -178,8 +181,11 @@ export default function App() {
           horaInicial={editor.horaInicial}
           onFechar={() => setEditor(null)}
           onSalvo={() => { setEditor(null); setDetalhe(null); carregar(); }}
+          onAvaliado={carregar}
         />
       )}
+
+      {perfilAberto && <Perfil onFechar={() => setPerfilAberto(false)} />}
 
       <Chat aberto={chatAberto} onFechar={() => setChatAberto(false)} onMudouAgenda={carregar} />
     </main>

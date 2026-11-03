@@ -393,3 +393,9 @@ button.push.ativo { color: var(--acao); }
 .menu-novo .opcoes small { font-size: 0.8rem; }
 .fabs .fab.aberto { transform: rotate(45deg); background: var(--camada-2); color: var(--texto); box-shadow: none; }
 .fabs .fab { transition: transform 0.2s, background 0.2s; }
+
+/* ---------- perfil ---------- */
+.perfil textarea { min-height: 220px; line-height: 1.5; }
+.perfil .acoes { display: flex; justify-content: flex-end; }
+.perfil .salvar { background: var(--acao); color: var(--fundo); padding: 12px 22px; border-radius: var(--raio-p); font-weight: 600; }
+.perfil .salvar:disabled { opacity: 0.6; }

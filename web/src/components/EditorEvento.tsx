@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { supabase, type Contexto, type Evento, type Tipo } from "../lib/supabase";
 import { diaDe } from "../lib/dates";
+import { avaliarEsforco } from "../lib/assistente";
 
 const CONTEXTOS: { id: Contexto; rotulo: string }[] = [
   { id: "trabalho", rotulo: "Trabalho" },
@@ -23,11 +24,12 @@ type Props = {
   horaInicial?: string;
   onFechar: () => void;
   onSalvo: () => void;
+  onAvaliado?: () => void;
 };
 
 // Uma folha só para criar e editar, evento ou tarefa. O que muda entre os dois:
 // evento tem começo e fim; tarefa tem só um "começar às" opcional.
-export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo }: Props) {
+export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo, onAvaliado }: Props) {
   const tarefa = tipo === "tarefa";
   const [title, setTitle] = useState(evento?.title ?? "");
   const [context, setContext] = useState<Contexto>(evento?.context ?? (tarefa ? "trabalho" : "pessoal"));
@@ -52,12 +54,17 @@ export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo
       notes: notes.trim() || null,
     };
     const q = evento
-      ? supabase.from("events").update(payload).eq("id", evento.id)
-      : supabase.from("events").insert(payload);
-    const { error } = await q;
+      ? supabase.from("events").update(payload).eq("id", evento.id).select("id").single()
+      : supabase.from("events").insert(payload).select("id").single();
+    const { data: salvo, error } = await q;
     setSalvando(false);
     if (error) return alert(error.message);
     onSalvo();
+    // Novo item: a IA avalia em segundo plano. A tela já fechou; quando terminar,
+    // o onAvaliado recarrega e a % aparece. Erro aqui não atrapalha o salvar.
+    if (!evento && salvo?.id) {
+      avaliarEsforco(salvo.id).then(() => onAvaliado?.()).catch(console.warn);
+    }
   }
 
   async function remover() {

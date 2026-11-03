@@ -57,14 +57,25 @@ Deno.serve(async (req) => {
     .lte("starts_at", `${dia}T23:59:59-03:00`)
     .neq("id", event_id);
 
-  let key: string;
-  try {
-    key = await carregarApiKey();
-  } catch (e) {
-    return Response.json({ erro: (e as Error).message }, { status: 500, headers: cors });
-  }
+  // Contexto do dono: perfil (editável no app), avaliações anteriores (calibração) e resumo do dia.
+  const [perfilR, anterioresR, briefR, keyR] = await Promise.allSettled([
+    admin.from("perfil").select("texto").eq("id", 1).maybeSingle(),
+    admin.from("events").select("title,context,effort,ai_brief").not("effort", "is", null).neq("id", event_id)
+      .order("ai_evaluated_at", { ascending: false }).limit(12),
+    admin.from("daily_briefs").select("suggestion,github,course").eq("brief_date", dia).maybeSingle(),
+    carregarApiKey(),
+  ]);
+  if (keyR.status === "rejected") return Response.json({ erro: String(keyR.reason?.message ?? keyR.reason) }, { status: 500, headers: cors });
+  const key = keyR.value;
+  const perfil = perfilR.status === "fulfilled" ? perfilR.value.data?.texto ?? "" : "";
+  const anteriores = anterioresR.status === "fulfilled" ? anterioresR.value.data ?? [] : [];
+  const brief = briefR.status === "fulfilled" ? briefR.value.data : null;
 
-  const system = `Você avalia o esforço de tarefas da agenda do Duque: dev fullstack na Medweb (React/TS, Node, Supabase), aluno do 2º ano do ensino médio, e fazendo o curso de JavaScript do web.dev.
+  const system = `Você avalia o esforço de tarefas da agenda do Duque.
+
+SOBRE ELE (escrito por ele mesmo; use pra calibrar):
+${perfil || "(sem perfil)"}
+
 Escala de esforço (%):
 - 0–20: rotina, quase automático (responder mensagem, ler e-mail).
 - 21–45: exige atenção mas é conhecido (aula, revisar PR pequena, módulo do curso).
@@ -81,6 +92,9 @@ Brief e recomendações em português do Brasil, diretos, sem motivação barata
     dia_inteiro: ev.all_day,
     notas: ev.notes,
     outros_eventos_do_dia: outros ?? [],
+    resumo_do_dia: brief ? { sugestao: brief.suggestion, github: brief.github, curso: brief.course } : null,
+    // Avaliações que você já fez: mantenha coerência com elas (mesma tarefa ≈ mesmo esforço).
+    avaliacoes_anteriores: anteriores,
   };
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -106,11 +120,11 @@ Brief e recomendações em português do Brasil, diretos, sem motivação barata
   if (!uso?.input) return Response.json({ erro: "Modelo não devolveu avaliação" }, { status: 502, headers: cors });
 
   const effort = Math.max(0, Math.min(100, Math.round(Number(uso.input.effort))));
-  const brief = String(uso.input.brief ?? "");
+  const briefTexto = String(uso.input.brief ?? "");
   const tips = (Array.isArray(uso.input.tips) ? uso.input.tips : []).slice(0, 4).map(String);
   const { data: salvo, error: upErr } = await admin
     .from("events")
-    .update({ effort, ai_brief: brief, ai_tips: tips, ai_evaluated_at: new Date().toISOString() })
+    .update({ effort, ai_brief: briefTexto, ai_tips: tips, ai_evaluated_at: new Date().toISOString() })
     .eq("id", event_id)
     .select()
     .single();
