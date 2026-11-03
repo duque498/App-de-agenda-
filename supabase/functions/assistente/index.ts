@@ -81,20 +81,21 @@ const tools = [
   },
   {
     name: "criar_serie",
-    description: "Cria o mesmo bloco em vários dias de uma vez (ex.: escola de segunda a sexta até dezembro). Use isto em vez de criar_evento repetido.",
+    description: "Cria o mesmo item (evento ou tarefa) em vários dias de uma vez (ex.: escola de segunda a sexta até dezembro; 'revisar PRs' toda sexta). Use isto em vez de criar_evento repetido.",
     input_schema: {
       type: "object",
       properties: {
+        kind: { type: "string", enum: ["evento", "tarefa"], description: "padrão evento" },
         title: { type: "string" },
         context: { type: "string", enum: ["trabalho", "escola", "curso", "pessoal"] },
-        hora_inicio: { type: "string", description: "HH:MM" },
-        hora_fim: { type: "string", description: "HH:MM ou null" },
+        hora_inicio: { type: "string", description: "HH:MM. Para tarefa sem hora, omita." },
+        hora_fim: { type: "string", description: "HH:MM ou null (tarefa não usa)" },
         dias_semana: { type: "array", items: { type: "integer", minimum: 0, maximum: 6 }, description: "0=domingo … 6=sábado. Dias úteis = [1,2,3,4,5]" },
         de: { type: "string", description: "YYYY-MM-DD, primeiro dia" },
         ate: { type: "string", description: "YYYY-MM-DD, último dia (máx. ~90 dias à frente)" },
         notes: { type: "string" },
       },
-      required: ["title", "context", "hora_inicio", "dias_semana", "de", "ate"],
+      required: ["title", "context", "dias_semana", "de", "ate"],
     },
   },
   {
@@ -139,10 +140,14 @@ async function executar(nome: string, input: Record<string, unknown>) {
       return error ? { erro: error.message } : { atualizado: data };
     }
     case "criar_serie": {
-      const { title, context, hora_inicio, hora_fim, dias_semana, de, ate, notes } = input as {
-        title: string; context: string; hora_inicio: string; hora_fim?: string | null;
+      const { kind = "evento", title, context, hora_inicio, hora_fim, dias_semana, de, ate, notes } = input as {
+        kind?: string; title: string; context: string; hora_inicio?: string | null; hora_fim?: string | null;
         dias_semana: number[]; de: string; ate: string; notes?: string;
       };
+      const tarefa = kind === "tarefa";
+      // Evento precisa de hora; tarefa sem hora vira "dia inteiro" (meia-noite de SP).
+      if (!tarefa && !hora_inicio) return { erro: "Evento precisa de hora_inicio." };
+      const semHora = !hora_inicio;
       const linhas: Record<string, unknown>[] = [];
       const [y, m, d] = de.split("-").map(Number);
       const fim = new Date(`${ate}T12:00:00Z`);
@@ -150,9 +155,9 @@ async function executar(nome: string, input: Record<string, unknown>) {
         if (!dias_semana.includes(cur.getUTCDay())) continue;
         const iso = cur.toISOString().slice(0, 10);
         linhas.push({
-          title, context, notes: notes ?? null, source: "ia",
-          starts_at: `${iso}T${hora_inicio}:00-03:00`,
-          ends_at: hora_fim ? `${iso}T${hora_fim}:00-03:00` : null,
+          kind, title, context, notes: notes ?? null, source: "ia", all_day: semHora,
+          starts_at: semHora ? `${iso}T00:00:00-03:00` : `${iso}T${hora_inicio}:00-03:00`,
+          ends_at: !tarefa && hora_fim ? `${iso}T${hora_fim}:00-03:00` : null,
         });
       }
       if (!linhas.length) return { erro: "Nenhum dia bate com os critérios." };
@@ -221,7 +226,7 @@ Regras:
 - Se a pessoa pedir pra "organizar o dia", leia ler_resumo e listar_dia primeiro e proponha blocos concretos; só crie depois de ela confirmar, a não ser que ela já tenha mandado criar.
 - Depois de agir, confirme em uma linha o que mudou. Não repita a lista inteira.
 - Se faltar informação essencial (que horas?), pergunte em uma frase.
-- Pra algo que se repete (aula toda semana, escola em dias úteis) use criar_serie. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.`;
+- Pra algo que se repete (aula toda semana, escola em dias úteis, tarefa toda sexta) use criar_serie, com kind "tarefa" quando for tarefa. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.`;
 
   const historico: Msg[] = [...messages].slice(-20);
   const acoes: string[] = [];
