@@ -213,3 +213,10 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - **Ferramentas novas**: `ler_resumos_recentes` (PRs, reviews, issues, e-mails, curso dos últimos N dias — é por aí que ele "integra o trabalho") e `listar_periodo`. Ele não acessa GitHub/Gmail ao vivo; o prompt o obriga a dizer a data do resumo quando a pergunta exige dado atual.
 - **Persona no system prompt**: direto, seco, humor raro, nunca bajula. Personalidade é prompt, não código — e fica num lugar só.
 - UI: aba própria em vez de gaveta. Conversa precisa de espaço; gaveta era pra comando rápido. O botão "Tobias" flutuante só leva pra aba.
+
+## 18. Memória compartilhada Claude ↔ Tobias
+
+- A memória do claude.ai **não é acessível por API**. A ponte possível é um lugar que os dois alcançam: a tabela `memorias` no Supabase. O Tobias grava pela ferramenta `lembrar` (e apaga com `esquecer`); o Claude lê e grava pelo conector Supabase em qualquer conversa — e tem anotado na própria memória que essa tabela existe e quando consultá-la.
+- Cada linha tem `origem` (`tobias` | `claude` | `duque`): dá pra saber quem aprendeu o quê, e pra auditar se alguém gravou bobagem.
+- Tanto `assistente` quanto `esforco` injetam `perfil` + `memorias` no system prompt. O Tobias vê os ids (`[12] texto`) pra poder esquecer por id; o avaliador vê só o texto.
+- Regra no prompt: "não guarde coisa passageira". Memória cresce; o que vale é fato durável (horários fixos, prazos, preferências), não "hoje estou cansado".

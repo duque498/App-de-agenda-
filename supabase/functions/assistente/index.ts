@@ -129,6 +129,16 @@ const tools = [
     },
   },
   {
+    name: "lembrar",
+    description: "Guarda um fato durável sobre o Duque na memória compartilhada (ex.: 'treina seg/qua/sex às 18h', 'prova de física dia 20'). O Claude do claude.ai também lê isso. Não guarde coisa passageira.",
+    input_schema: { type: "object", properties: { texto: { type: "string" } }, required: ["texto"] },
+  },
+  {
+    name: "esquecer",
+    description: "Remove uma memória pelo id (ver lista no contexto).",
+    input_schema: { type: "object", properties: { id: { type: "integer" } }, required: ["id"] },
+  },
+  {
     name: "concluir_tarefa",
     description: "Marca uma tarefa como concluída (done=true) ou reabre (done=false).",
     input_schema: { type: "object", properties: { id: { type: "string" }, done: { type: "boolean" } }, required: ["id", "done"] },
@@ -218,6 +228,14 @@ async function executar(nome: string, input: Record<string, unknown>) {
           .in("id", criados.slice(1).map((c) => c.id));
       }
       return { criados: linhas.length, primeiro: linhas[0].starts_at, ultimo: linhas[linhas.length - 1].starts_at, esforco };
+    }
+    case "lembrar": {
+      const { data, error } = await admin.from("memorias").insert({ texto: String(input.texto), origem: "tobias" }).select("id,texto").single();
+      return error ? { erro: error.message } : { guardado: data };
+    }
+    case "esquecer": {
+      const { error } = await admin.from("memorias").delete().eq("id", input.id);
+      return error ? { erro: error.message } : { removido: input.id };
     }
     case "concluir_tarefa": {
       const { data, error } = await admin.from("events").update({ done: input.done }).eq("id", input.id).select("id,title,done").single();
@@ -318,8 +336,12 @@ Deno.serve(async (req) => {
   const textoNovo = (corpo.texto ?? "").trim();
   if (!textoNovo && !corpo.messages) return Response.json({ erro: "Mensagem vazia." }, { status: 400, headers: cors });
   const messages: Msg[] = corpo.messages ?? [...anteriores, { role: "user", content: textoNovo }];
-  const { data: perfilRow } = await admin.from("perfil").select("texto").eq("id", 1).maybeSingle();
+  const [{ data: perfilRow }, { data: memRows }] = await Promise.all([
+    admin.from("perfil").select("texto").eq("id", 1).maybeSingle(),
+    admin.from("memorias").select("id,texto,origem,created_at").order("id").limit(80),
+  ]);
   const perfil = perfilRow?.texto ?? "";
+  const memorias = (memRows ?? []).map((m) => `[${m.id}] ${m.texto} (${m.origem}, ${String(m.created_at).slice(0, 10)})`).join("\n");
   const agora = new Intl.DateTimeFormat("pt-BR", {
     timeZone: TZ, dateStyle: "full", timeStyle: "short",
   }).format(new Date());
@@ -330,6 +352,9 @@ Personalidade: direto, seco no bom sentido, competente, com humor fino e raro. N
 
 SOBRE ELE (escrito por ele; use pra decidir contexto, horários e prioridades):
 ${perfil || "(sem perfil)"}
+
+MEMÓRIA COMPARTILHADA (fatos duráveis; você e o Claude do claude.ai gravam aqui; use a ferramenta lembrar quando ele contar algo que vale guardar):
+${memorias || "(vazia)"}
 
 Agora é ${agora} (fuso ${TZ}). Hoje é ${hojeISO}.
 Contextos possíveis: trabalho (Medweb), escola, curso (web.dev), pessoal.

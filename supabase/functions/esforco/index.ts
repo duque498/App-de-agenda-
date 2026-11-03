@@ -58,13 +58,15 @@ Deno.serve(async (req) => {
     .neq("id", event_id);
 
   // Contexto do dono: perfil (editável no app), avaliações anteriores (calibração) e resumo do dia.
-  const [perfilR, anterioresR, briefR, keyR] = await Promise.allSettled([
+  const [perfilR, anterioresR, briefR, keyR, memR] = await Promise.allSettled([
     admin.from("perfil").select("texto").eq("id", 1).maybeSingle(),
     admin.from("events").select("title,context,effort,ai_brief").not("effort", "is", null).neq("id", event_id)
       .order("ai_evaluated_at", { ascending: false }).limit(12),
     admin.from("daily_briefs").select("suggestion,github,course").eq("brief_date", dia).maybeSingle(),
     carregarApiKey(),
+    admin.from("memorias").select("texto").order("id").limit(80),
   ]);
+  const memorias = memR.status === "fulfilled" ? (memR.value.data ?? []).map((m) => `- ${m.texto}`).join("\n") : "";
   if (keyR.status === "rejected") return Response.json({ erro: String(keyR.reason?.message ?? keyR.reason) }, { status: 500, headers: cors });
   const key = keyR.value;
   const perfil = perfilR.status === "fulfilled" ? perfilR.value.data?.texto ?? "" : "";
@@ -75,6 +77,9 @@ Deno.serve(async (req) => {
 
 SOBRE ELE (escrito por ele mesmo; use pra calibrar):
 ${perfil || "(sem perfil)"}
+
+MEMÓRIA COMPARTILHADA (fatos que ele ou o Tobias guardaram):
+${memorias || "(vazia)"}
 
 Escala de esforço (%):
 - 0–20: rotina, quase automático (responder mensagem, ler e-mail).
