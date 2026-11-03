@@ -1,22 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, type Brief, type Evento } from "./lib/supabase";
-import { addDias, formatarDia, hojeISO, limitesDoDia } from "./lib/dates";
+import { formatarDia, hojeISO, limitesDoDia } from "./lib/dates";
 import { Login } from "./components/Login";
-import { BriefCard } from "./components/BriefCard";
-import { Blocos } from "./components/Blocos";
+import { Briefing } from "./components/Briefing";
+import { Semana } from "./components/Semana";
+import { Timeline } from "./components/Timeline";
+import { EditorEvento } from "./components/EditorEvento";
+import { Chat } from "./components/Chat";
 import { PushToggle } from "./components/PushToggle";
+
+type Editor = { evento: Evento | null; horaInicial?: string } | null;
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
-
-  // ?dia=YYYY-MM-DD vem da notificação; sem isso, hoje.
   const [dia, setDia] = useState(() => new URLSearchParams(location.search).get("dia") ?? hojeISO());
   const [brief, setBrief] = useState<Brief | null>(null);
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [streak, setStreak] = useState<number | null>(null);
+  const [editor, setEditor] = useState<Editor>(null);
+  const [chatAberto, setChatAberto] = useState(false);
 
-  // Sessão: carrega a atual e escuta mudanças (login, logout, refresh do token).
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -25,7 +29,6 @@ export default function App() {
 
   const carregar = useCallback(async () => {
     const { inicio, fim } = limitesDoDia(dia);
-    // Três consultas em paralelo: são independentes, não faz sentido esperar uma pela outra.
     const [b, e, s] = await Promise.all([
       supabase.from("daily_briefs").select("*").eq("brief_date", dia).maybeSingle(),
       supabase.from("events").select("*").gte("starts_at", inicio).lte("starts_at", fim).order("starts_at"),
@@ -40,6 +43,13 @@ export default function App() {
     if (session) carregar();
   }, [session, carregar]);
 
+  // Recarrega quando o app volta pro primeiro plano (iOS congela o PWA em background).
+  useEffect(() => {
+    const f = () => document.visibilityState === "visible" && session && carregar();
+    document.addEventListener("visibilitychange", f);
+    return () => document.removeEventListener("visibilitychange", f);
+  }, [session, carregar]);
+
   if (session === undefined) return null;
   if (!session) return <Login />;
 
@@ -47,25 +57,44 @@ export default function App() {
 
   return (
     <main className="app">
-      <header className="topo">
-        <button className="mini" onClick={() => setDia(addDias(dia, -1))}>‹</button>
-        <div className="titulo" onClick={() => setDia(hojeISO())}>
-          <h1>{ehHoje ? "Hoje" : formatarDia(dia)}</h1>
-          {ehHoje && <small>{formatarDia(dia)}</small>}
+      <header className="cabecalho">
+        <div>
+          <h1 onClick={() => setDia(hojeISO())}>{ehHoje ? "Hoje" : formatarDia(dia).split(",")[0]}</h1>
+          <small>{formatarDia(dia)}</small>
         </div>
-        <button className="mini" onClick={() => setDia(addDias(dia, 1))}>›</button>
+        <div className="cabecalho-acoes">
+          <PushToggle />
+          <button className="texto" onClick={() => supabase.auth.signOut()}>Sair</button>
+        </div>
       </header>
 
-      <div className="faixa">
-        <span className="streak" title="dias seguidos avançando no curso">
-          🔥 {streak ?? "…"}
-        </span>
-        <PushToggle />
-        <button className="link" onClick={() => supabase.auth.signOut()}>sair</button>
-      </div>
+      <Briefing brief={brief} streak={streak} />
+      <Semana dia={dia} onEscolher={setDia} />
+      <Timeline
+        dia={dia}
+        eventos={eventos}
+        onAbrir={(evento) => setEditor({ evento })}
+        onNovo={(horaInicial) => setEditor({ evento: null, horaInicial })}
+      />
 
-      <BriefCard brief={brief} />
-      <Blocos dia={dia} eventos={eventos} onMudou={carregar} />
+      <button className="fab" onClick={() => setChatAberto(true)} aria-label="Falar com a agenda">
+        Mudar o dia
+      </button>
+
+      {editor && (
+        <EditorEvento
+          dia={dia}
+          evento={editor.evento}
+          horaInicial={editor.horaInicial}
+          onFechar={() => setEditor(null)}
+          onSalvo={() => {
+            setEditor(null);
+            carregar();
+          }}
+        />
+      )}
+
+      <Chat aberto={chatAberto} onFechar={() => setChatAberto(false)} onMudouAgenda={carregar} />
     </main>
   );
 }

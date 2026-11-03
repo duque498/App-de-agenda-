@@ -105,3 +105,56 @@ No iOS, o link do e-mail abre no Safari, não dentro do PWA — a sessão fica n
 - [ ] Como a Edge Function obtém a chave VAPID sem env var?
 - [ ] O que `day - row_number()` faz no cálculo do streak?
 - [ ] Por que `atob` não lê a chave VAPID direto?
+
+---
+
+# Sessão 2 — UI nova e assistente com IA
+
+## 9. Edge Function `assistente`
+
+É o "Claude administrando as coisas". Fluxo de uma mensagem:
+
+```
+app ──JWT + histórico──▶ assistente ──▶ Anthropic API (com tools)
+                             │               │ stop_reason = tool_use?
+                             │◀── executa a tool no banco (service role) ◀┘
+                             │   e devolve tool_result; repete até end_turn
+                             └──▶ { resposta, acoes, historico }
+```
+
+Decisões:
+- **`verify_jwt: true` + checagem do e-mail.** O gateway do Supabase já barra quem não tem JWT; a função ainda confere que o JWT é **teu** (`admin.auth.getUser(jwt)`), porque "logado" não é o mesmo que "dono". É a mesma regra do RLS, só que em código.
+- **Service role nas ferramentas.** A função usa a service role pra escrever em `events` — por isso a checagem do e-mail acima é obrigatória. Sem ela, qualquer conta logada mandaria a IA apagar tua agenda.
+- **Loop agêntico com teto de 8 rodadas.** `tool_use` → executa → `tool_result` → chama de novo. O teto evita loop infinito se o modelo ficar chamando ferramenta sem parar.
+- **Histórico vai e volta inteiro.** O app guarda o `historico` que a função devolve (com `tool_use`/`tool_result`) e manda de volta na próxima mensagem. Sem isso a IA não lembra que acabou de criar um evento. Fica em memória do app: fechou, zerou. Simples de propósito.
+- **Chave da Anthropic no Vault**, mesma RPC `get_app_secrets()` (atualizada pra incluir `anthropic_api_key`). Zero chave no front, zero chave em env manual.
+- **Modelo:** `claude-sonnet-5-5` — rápido e barato o suficiente pra chat de agenda. Dá pra trocar numa constante.
+- `source: "ia"` nos eventos que a IA cria → a timeline mostra um pontinho verde-água neles. Tu sabe o que foi tu e o que foi ela.
+
+Pra ligar: no SQL Editor do Supabase, uma vez:
+```sql
+select vault.create_secret('sk-ant-...sua chave...', 'anthropic_api_key', 'Chave da Anthropic API');
+```
+A chave sai de console.anthropic.com e é cobrada por uso, separado da assinatura do claude.ai. Chat de agenda gasta centavos por dia.
+
+## 10. UI
+
+**Herói = sugestão do dia** em 1.45rem. É a única coisa que importa quando o push chega às 14h. Pendências ficam dobradas em "Ver detalhes".
+
+**Timeline vertical** (07h–23h, 56px por hora): posição e altura do bloco vêm dos minutos desde 07:00 — `top = (min/60) * 56`. A linha "agora" é o mesmo cálculo com `new Date()`, atualizada a cada minuto. Tocar numa hora vazia abre o editor já com aquela hora. `minutosDesdeInicio` usa `Intl.DateTimeFormat(..., { timeZone: "America/Sao_Paulo" })` em vez de `getHours()` pra não depender do fuso do aparelho.
+
+**Cores por contexto via CSS custom property**: `.ctx-trabalho { --ctx: var(--trabalho) }` e o resto (`border-left`, `color` da hora, chip) só lê `var(--ctx)`. Um lugar define, todo mundo herda — sem quatro regras repetidas por componente.
+
+**Gavetas (bottom sheet)** pra editor e chat: `transform: translateY(100%)` → `translateY(0)`. Transform não dispara layout, por isso é suave no celular. `pointer-events: none` quando fechada pra não bloquear toques.
+
+**Tipografia**: uma família só (Instrument Sans), hierarquia por tamanho e peso, sem caixa alta em rótulo, sem marcador numerado. Fundo tinta-azulada em vez de preto puro; verde-água como única cor de ação.
+
+**`visibilitychange`**: iOS congela o PWA em background; quando volta, recarrega. Senão tu abre pelo push e vê dado velho.
+
+## 11. Checklist da sessão 2
+
+- [ ] Por que a função `assistente` precisa checar o e-mail se já tem `verify_jwt`?
+- [ ] O que acontece se o modelo responder `stop_reason: "tool_use"`?
+- [ ] Por que mandamos o histórico inteiro de volta, incluindo `tool_result`?
+- [ ] Como a timeline calcula o `top` de um bloco?
+- [ ] Por que `translateY` e não `bottom: -100%` na gaveta?
