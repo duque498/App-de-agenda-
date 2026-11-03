@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { Md } from "./Md";
 
-type Linha = { id: number; role: "user" | "assistant"; texto: string };
+type Linha = { id: number; role: "user" | "assistant"; texto: string; erro?: boolean };
 
 const SUGESTOES = ["Como tá meu dia?", "O que tá pendente na Medweb?", "Organiza minha semana", "Onde parei no curso?"];
 
@@ -24,8 +24,10 @@ export function Tobias({ onMudouAgenda }: { onMudouAgenda: () => void }) {
   const fim = useRef<HTMLDivElement>(null);
 
   async function carregar() {
-    const { data } = await supabase.from("chat_messages").select("id,role,content").eq("visible", true).order("id").limit(200);
-    setLinhas((data ?? []).map((r) => ({ id: r.id, role: r.role, texto: textoDe(r.content) })).filter((l) => l.texto));
+    const { data } = await supabase.from("chat_messages").select("id,role,content,erro").eq("visible", true).order("id").limit(200);
+    const novas = (data ?? []).map((r) => ({ id: r.id, role: r.role, texto: textoDe(r.content), erro: r.erro })).filter((l) => l.texto);
+    setLinhas(novas);
+    return novas;
   }
   useEffect(() => { carregar(); }, []);
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [linhas, pensando]);
@@ -37,6 +39,7 @@ export function Tobias({ onMudouAgenda }: { onMudouAgenda: () => void }) {
     setPensando(true);
     setLinhas((l) => [...l, { id: -Date.now(), role: "user", texto: t }]);
     try {
+      // A função responde na hora ("aceito") e trabalha em background; a resposta chega pelo banco.
       const { data, error } = await supabase.functions.invoke("assistente", { body: { texto: t } });
       if (error) {
         const ctx = (error as { context?: Response }).context;
@@ -45,8 +48,21 @@ export function Tobias({ onMudouAgenda }: { onMudouAgenda: () => void }) {
         throw new Error(msg);
       }
       if (data?.erro) throw new Error(data.erro);
-      if (data.acoes?.length) onMudouAgenda();
-      await carregar();
+      const userId: number = data.user_id ?? 0;
+
+      // Espera a primeira mensagem do assistente com id maior que a do usuário (até 3 min).
+      const limite = Date.now() + 180_000;
+      while (Date.now() < limite) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const { data: resp } = await supabase.from("chat_messages").select("id,acoes")
+          .eq("role", "assistant").eq("visible", true).gt("id", userId).order("id").limit(5);
+        if (resp && resp.length) {
+          await carregar();
+          if (resp.some((r) => r.acoes > 0)) onMudouAgenda();
+          return;
+        }
+      }
+      setErro("O Tobias demorou demais. A resposta pode aparecer se você reabrir a aba.");
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -77,7 +93,8 @@ export function Tobias({ onMudouAgenda }: { onMudouAgenda: () => void }) {
           </div>
         )}
         {linhas.map((m) =>
-          m.role === "assistant"
+          m.erro ? <p key={m.id} className="msg erro">{m.texto}</p>
+          : m.role === "assistant"
             ? <Md key={m.id} texto={m.texto} className="msg assistant" />
             : <p key={m.id} className="msg user">{m.texto}</p>,
         )}

@@ -220,3 +220,11 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - Cada linha tem `origem` (`tobias` | `claude` | `duque`): dá pra saber quem aprendeu o quê, e pra auditar se alguém gravou bobagem.
 - Tanto `assistente` quanto `esforco` injetam `perfil` + `memorias` no system prompt. O Tobias vê os ids (`[12] texto`) pra poder esquecer por id; o avaliador vê só o texto.
 - Regra no prompt: "não guarde coisa passageira". Memória cresce; o que vale é fato durável (horários fixos, prazos, preferências), não "hoje estou cansado".
+
+## 19. Resposta assíncrona do Tobias
+
+- Sintoma: "Failed to send a request to the Edge Function" numa mensagem longa. Nos logs, o worker subiu e foi desligado sem nunca registrar o POST — a conexão foi cortada do lado do cliente enquanto o loop (várias rodadas + avaliações) ainda rodava. Celular não segura requisição de 60 s.
+- Solução: **aceitar e responder na hora (202), processar em background** com `EdgeRuntime.waitUntil`, e o app faz polling em `chat_messages` a cada 2 s até aparecer uma mensagem do assistente com id maior que a do usuário. Nenhuma conexão vive mais que um segundo.
+- A mensagem do usuário é gravada **antes** de começar: se tudo falhar depois, ela não some. Erro no loop vira uma mensagem do assistente com `erro = true` (vermelha na tela) — nunca silêncio.
+- Coluna `acoes` na resposta: o app recarrega a agenda só quando a IA mudou algo, sem comparar listas.
+- Padrão geral: operação que pode demorar não deve segurar o HTTP. Aceita → trabalha → grava → cliente observa.

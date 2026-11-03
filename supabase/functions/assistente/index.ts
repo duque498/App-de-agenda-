@@ -322,7 +322,7 @@ Deno.serve(async (req) => {
     return Response.json({ erro: (e as Error).message }, { status: 500, headers: cors });
   }
 
-  const corpo = (await req.json()) as { texto?: string; messages?: Msg[]; limpar?: boolean };
+  const corpo = (await req.json()) as { texto?: string; limpar?: boolean };
 
   // /limpar: zera a conversa.
   if (corpo.limpar) {
@@ -334,8 +334,8 @@ Deno.serve(async (req) => {
   const { data: salvas } = await admin.from("chat_messages").select("role,content").order("id", { ascending: true }).limit(60);
   const anteriores: Msg[] = (salvas ?? []).map((r) => ({ role: r.role as Msg["role"], content: r.content }));
   const textoNovo = (corpo.texto ?? "").trim();
-  if (!textoNovo && !corpo.messages) return Response.json({ erro: "Mensagem vazia." }, { status: 400, headers: cors });
-  const messages: Msg[] = corpo.messages ?? [...anteriores, { role: "user", content: textoNovo }];
+  if (!textoNovo) return Response.json({ erro: "Mensagem vazia." }, { status: 400, headers: cors });
+  const messages: Msg[] = [...anteriores, { role: "user", content: textoNovo }];
   const [{ data: perfilRow }, { data: memRows }] = await Promise.all([
     admin.from("perfil").select("texto").eq("id", 1).maybeSingle(),
     admin.from("memorias").select("id,texto,origem,created_at").order("id").limit(80),
@@ -370,52 +370,61 @@ Regras:
 - Pra algo que se repete (aula toda semana, escola em dias úteis, tarefa toda sexta) use criar_serie, com kind "tarefa" quando for tarefa. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.`;
 
   const historico: Msg[] = limparHistorico([...messages].slice(-30));
-  const acoes: string[] = [];
   // Tudo a partir daqui (a mensagem nova do usuário é a última) é o que será persistido no fim.
   const inicioNovo = Math.max(0, historico.length - 1);
 
-  for (let rodada = 0; rodada < 8; rodada++) {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: MODEL, max_tokens: 4096, system, tools, messages: historico }),
-    });
-    if (!resp.ok) {
-      return Response.json({ erro: `Anthropic ${resp.status}: ${await resp.text()}` }, { status: 502, headers: cors });
-    }
-    const data = await resp.json();
-    historico.push({ role: "assistant", content: data.content });
+  // Grava a mensagem do usuário já, pra tela mostrar e pra sobreviver a qualquer falha adiante.
+  const { data: linhaUser } = await admin.from("chat_messages")
+    .insert({ role: "user", content: textoNovo as unknown as object, visible: true }).select("id").single();
 
-    // Decide pelo conteúdo, não só pelo stop_reason: se estourou max_tokens no meio de uma
-    // sequência de tool_use, os blocos completos ainda precisam ser executados e respondidos.
-    const temToolUse = (data.content as BlocoConteudo[]).some((b) => b.type === "tool_use");
-    if (!temToolUse) {
-      const texto = (data.content as { type: string; text?: string }[])
-        .filter((b) => b.type === "text")
-        .map((b) => b.text)
-        .join("\n");
-      // Persiste só o que é novo nesta rodada: a mensagem do usuário e tudo que veio depois.
-      if (!corpo.messages) {
-        const linhas = historico.slice(inicioNovo).map((m) => ({
-          role: m.role,
-          content: m.content as unknown as object,
-          visible: typeof m.content === "string" || (Array.isArray(m.content) && (m.content as BlocoConteudo[]).some((b) => b.type === "text")),
-        }));
-        if (linhas.length) await admin.from("chat_messages").insert(linhas);
+  // O loop com a Anthropic pode levar 30–90s (várias rodadas + avaliações). Conexão longa cai no
+  // celular, então respondemos já e processamos em background; o app acompanha pelo banco.
+  const trabalho = (async () => {
+    const acoes: string[] = [];
+    try {
+      for (let rodada = 0; rodada < 8; rodada++) {
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: MODEL, max_tokens: 4096, system, tools, messages: historico }),
+        });
+        if (!resp.ok) throw new Error(`Anthropic ${resp.status}: ${await resp.text()}`);
+        const data = await resp.json();
+        historico.push({ role: "assistant", content: data.content });
+
+        // Decide pelo conteúdo, não só pelo stop_reason: se estourou max_tokens no meio de uma
+        // sequência de tool_use, os blocos completos ainda precisam ser executados e respondidos.
+        const temToolUse = (data.content as BlocoConteudo[]).some((b) => b.type === "tool_use");
+        if (!temToolUse) break;
+
+        const resultados = [];
+        for (const bloco of data.content as { type: string; id: string; name: string; input: Record<string, unknown> }[]) {
+          if (bloco.type !== "tool_use") continue;
+          const r = await executar(bloco.name, bloco.input);
+          if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento", "concluir_tarefa"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
+          resultados.push({ type: "tool_result", tool_use_id: bloco.id, content: JSON.stringify(r) });
+        }
+        historico.push({ role: "user", content: resultados });
       }
-      return Response.json({ resposta: texto, acoes, historico }, { headers: cors });
+      // Persiste tudo que veio depois da mensagem do usuário (que já está salva).
+      const linhas = historico.slice(inicioNovo + 1).map((m) => ({
+        role: m.role,
+        content: m.content as unknown as object,
+        visible: Array.isArray(m.content) && (m.content as BlocoConteudo[]).some((b) => b.type === "text"),
+        acoes: acoes.length,
+      }));
+      if (linhas.length) await admin.from("chat_messages").insert(linhas);
+    } catch (e) {
+      console.error("assistente falhou", e);
+      await admin.from("chat_messages").insert({
+        role: "assistant", content: `Deu erro aqui: ${(e as Error).message}`, visible: true, erro: true,
+      });
     }
+  })();
 
-    // Executa cada tool_use e devolve os resultados numa única mensagem de usuário.
-    const resultados = [];
-    for (const bloco of data.content as { type: string; id: string; name: string; input: Record<string, unknown> }[]) {
-      if (bloco.type !== "tool_use") continue;
-      const r = await executar(bloco.name, bloco.input);
-      if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento", "concluir_tarefa"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
-      resultados.push({ type: "tool_result", tool_use_id: bloco.id, content: JSON.stringify(r) });
-    }
-    historico.push({ role: "user", content: resultados });
-  }
+  // deno-lint-ignore no-explicit-any
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt?.waitUntil) rt.waitUntil(trabalho); else await trabalho;
 
-  return Response.json({ erro: "Muitas rodadas de ferramenta sem resposta final." }, { status: 500, headers: cors });
+  return Response.json({ aceito: true, user_id: linhaUser?.id ?? null }, { status: 202, headers: cors });
 });
