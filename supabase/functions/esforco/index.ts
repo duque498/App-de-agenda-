@@ -29,7 +29,7 @@ const ferramentaAvaliar = {
     properties: {
       effort: { type: "integer", minimum: 0, maximum: 100, description: "Esforço estimado em %, considerando duração, carga mental e contexto." },
       brief: { type: "string", description: "Uma ou duas frases: o que é essa tarefa na prática e por que esse nível de esforço." },
-      tips: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 4, description: "Recomendações concretas e curtas (quando fazer, como quebrar, o que preparar antes)." },
+      tips: { type: "array", items: { type: "string" }, description: "Recomendações concretas e curtas (quando fazer, como quebrar, o que preparar antes)." },
     },
     required: ["effort", "brief", "tips"],
   },
@@ -95,13 +95,19 @@ Brief e recomendações em português do Brasil, diretos, sem motivação barata
       messages: [{ role: "user", content: `Avalie este evento:\n${JSON.stringify(descricao, null, 2)}` }],
     }),
   });
-  if (!resp.ok) return Response.json({ erro: `Anthropic ${resp.status}: ${await resp.text()}` }, { status: 502, headers: cors });
+  if (!resp.ok) {
+    const corpo = await resp.text();
+    console.error("anthropic", resp.status, corpo);
+    return Response.json({ erro: `Anthropic ${resp.status}: ${corpo}` }, { status: 502, headers: cors });
+  }
 
   const data = await resp.json();
   const uso = (data.content as { type: string; input?: { effort: number; brief: string; tips: string[] } }[]).find((b) => b.type === "tool_use");
   if (!uso?.input) return Response.json({ erro: "Modelo não devolveu avaliação" }, { status: 502, headers: cors });
 
-  const { effort, brief, tips } = uso.input;
+  const effort = Math.max(0, Math.min(100, Math.round(Number(uso.input.effort))));
+  const brief = String(uso.input.brief ?? "");
+  const tips = (Array.isArray(uso.input.tips) ? uso.input.tips : []).slice(0, 4).map(String);
   const { data: salvo, error: upErr } = await admin
     .from("events")
     .update({ effort, ai_brief: brief, ai_tips: tips, ai_evaluated_at: new Date().toISOString() })
