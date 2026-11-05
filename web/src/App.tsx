@@ -73,6 +73,24 @@ export default function App() {
   const [detalhe, setDetalhe] = useState<Evento | null>(null);
   const [menuNovo, setMenuNovo] = useState(false);
   const [perfilAberto, setPerfilAberto] = useState(false);
+  // Cabeçalho recolhe ao rolar pra baixo e volta ao puxar pra cima (padrão iOS).
+  const [topoOculto, setTopoOculto] = useState(false);
+  useEffect(() => {
+    let ultimo = window.scrollY;
+    let acumulado = 0;
+    const f = () => {
+      const y = window.scrollY;
+      const delta = y - ultimo;
+      ultimo = y;
+      // Zona morta de 12px pra não piscar; perto do topo sempre mostra.
+      acumulado = Math.sign(delta) === Math.sign(acumulado) ? acumulado + delta : delta;
+      if (y < 24) setTopoOculto(false);
+      else if (acumulado > 12) setTopoOculto(true);
+      else if (acumulado < -12) setTopoOculto(false);
+    };
+    window.addEventListener("scroll", f, { passive: true });
+    return () => window.removeEventListener("scroll", f);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -133,7 +151,8 @@ export default function App() {
   const passo = visao === "semana" ? 7 : visao === "mes" ? 30 : visao === "grade" ? 14 : 1;
 
   return (
-    <main className="app">
+    <main className={`app visao-${visao}`}>
+      <div className={`topo vidro ${topoOculto ? "oculto" : ""}`}>
       <header className="cabecalho">
         <div className="cabecalho-titulo">
           {visao !== "lista" && visao !== "tobias" && <button className="nav" onClick={() => setDia(addDias(dia, -passo))} aria-label="Anterior">‹</button>}
@@ -155,6 +174,7 @@ export default function App() {
           <button key={v.id} className={visao === v.id ? "ativo" : ""} onClick={() => setVisao(v.id)}>{v.rotulo}</button>
         ))}
       </nav>
+      </div>
 
       {/* key força remontagem ao trocar visão/dia → a animação de entrada roda de novo */}
       <div className={`conteudo ${carregando ? "carregando" : ""}`} key={visao === "tobias" ? "tobias" : chave}>
@@ -196,7 +216,7 @@ export default function App() {
       </div>
 
       <div className={`fabs ${visao === "tobias" ? "escondido" : ""}`}>
-        <button className="fab secundario" onClick={() => setVisao("tobias")}>Tobias</button>
+        <button className="fab secundario vidro" onClick={() => setVisao("tobias")}>Tobias</button>
         <button className={`fab ${menuNovo ? "aberto" : ""}`} onClick={() => setMenuNovo(!menuNovo)} aria-label="Criar">+</button>
       </div>
 

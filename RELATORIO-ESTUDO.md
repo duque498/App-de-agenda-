@@ -234,3 +234,10 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - A sugestão do dia caiu de 1.4rem pra 1rem: o herói virou um cartão discreto com borda verde-água, que lê rápido e não empurra a timeline pra baixo da dobra. Hierarquia agora é: sugestão → uma linha de contexto (pendências, issues, próximo módulo, streak) → "Ver resumo completo".
 - O resumo completo é o `raw_markdown` que a tarefa das 14h já gravava e o app nunca mostrava. Renderizado com `Md`, títulos rebaixados pra não brigar com o resto da tela. Sem `raw_markdown` (resumos antigos), cai na lista de pendências.
 - Regra de design: o que tu lê toda vez fica pequeno e sempre visível; o que tu lê às vezes fica dobrado e completo.
+
+## 22. Liquid Glass e comportamento iOS
+
+- **Vidro = `backdrop-filter: blur() saturate()`** sobre um fundo semitransparente, com borda de 1px clara e um brilho interno (`inset 0 1px 0`). É isso que o iOS 26 faz nos controles do sistema; aqui replicamos no topo, FABs, menu do +, gavetas e barra do Tobias. `@supports not` cai pra cor sólida (Firefox antigo), e `prefers-reduced-transparency` também.
+- **Topo que recolhe**: `position: sticky` + listener de scroll com zona morta de 12px e acumulador de direção. Rolar pra baixo esconde; qualquer puxada pra cima mostra; perto do topo (< 24px) sempre visível. No Tobias é o que te deixa ver o seletor de dias/visões: desce a conversa, some; puxa, volta.
+- **Teclado do iOS**: ele não encolhe a viewport, só cobre. `window.visualViewport` diz a altura visível real; a diferença vira a CSS var `--teclado`, e a barra de texto (`position: fixed`) sobe junto. `interactive-widget=resizes-content` na meta viewport ajuda nos iOS mais novos.
+- Inputs com `font-size: 16px`: abaixo disso o Safari dá zoom automático ao focar. `enterKeyHint="send"` troca o "return" do teclado por "enviar". `touch-action: manipulation` tira os 300ms de atraso no toque. `overscroll-behavior-y: none` evita o "pull" branco no topo da página.

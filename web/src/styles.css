@@ -23,6 +23,8 @@
 
 html, body {
   margin: 0;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
   background: var(--fundo);
   color: var(--texto);
   font-family: "Instrument Sans", system-ui, sans-serif;
@@ -208,6 +210,7 @@ small { color: var(--texto-2); }
 
 input, textarea {
   width: 100%;
+  font-size: 16px; /* <16px faz o iOS dar zoom ao focar */
   background: var(--camada-2);
   color: var(--texto);
   border: 0;
@@ -460,13 +463,6 @@ button.push.ativo { color: var(--acao); }
 .tobias-cabecalho h2 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.04em; }
 .tobias-cabecalho small { display: block; margin-top: 2px; }
 .tobias-mensagens { flex: 1; max-height: none; padding-bottom: 12px; }
-.tobias-form {
-  position: sticky;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
-  display: flex; gap: 8px;
-  padding-top: 10px;
-  background: linear-gradient(to top, var(--fundo) 70%, transparent);
-}
 .tobias-form input { flex: 1; }
 .tobias-form button { background: var(--acao); color: var(--fundo); padding: 12px 18px; border-radius: var(--raio-p); font-weight: 600; }
 .tobias-form button:disabled { opacity: 0.45; }
@@ -539,4 +535,128 @@ button.push.ativo { color: var(--acao); }
   .cabecalho h1 { font-size: 1.5rem; }
   .briefing { padding: 12px 14px; }
   .fabs .fab.secundario { padding: 0 12px; font-size: 0.85rem; }
+}
+
+/* ======================================================================
+   Liquid Glass — vidro translúcido tintado pelo que está atrás.
+   backdrop-filter é o que faz o efeito; o fallback (@supports not) é cor sólida.
+   Em iOS 26 o Safari já aplica o visual do sistema nos controles nativos;
+   aqui replicamos pros nossos: topo, FABs, gavetas, barra do chat.
+   ====================================================================== */
+
+:root {
+  --vidro-fundo: rgba(20, 26, 36, 0.55);
+  --vidro-borda: rgba(255, 255, 255, 0.10);
+  --vidro-brilho: rgba(255, 255, 255, 0.06);
+  --vidro-blur: 22px;
+}
+
+.vidro {
+  background: var(--vidro-fundo);
+  -webkit-backdrop-filter: blur(var(--vidro-blur)) saturate(1.6);
+  backdrop-filter: blur(var(--vidro-blur)) saturate(1.6);
+  border: 1px solid var(--vidro-borda);
+  box-shadow: inset 0 1px 0 var(--vidro-brilho), 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vidro { background: rgba(20, 26, 36, 0.96); }
+}
+
+/* topo fixo que recolhe ao rolar */
+.topo {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  margin: 0 -20px 16px;
+  padding: calc(env(safe-area-inset-top) + 10px) 20px 10px;
+  border-left: 0; border-right: 0; border-top: 0;
+  border-radius: 0 0 22px 22px;
+  transform: translateY(0);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s;
+  will-change: transform;
+}
+.topo.oculto { transform: translateY(calc(-100% - 2px)); opacity: 0; pointer-events: none; }
+.app { padding-top: 0; }
+.topo .cabecalho { margin-bottom: 10px; }
+.topo .visoes { margin-bottom: 0; background: transparent; padding: 0; }
+.topo .visoes button { backdrop-filter: none; }
+.topo .visoes button.ativo { background: var(--texto); color: var(--fundo); }
+
+/* FABs e menu */
+.fabs .fab.secundario { color: var(--texto); }
+.fabs .fab { -webkit-backdrop-filter: blur(16px) saturate(1.4); backdrop-filter: blur(16px) saturate(1.4); }
+.fabs .fab.aberto { background: var(--vidro-fundo); border: 1px solid var(--vidro-borda); }
+.menu-novo .opcoes button {
+  background: var(--vidro-fundo);
+  -webkit-backdrop-filter: blur(var(--vidro-blur)) saturate(1.6);
+  backdrop-filter: blur(var(--vidro-blur)) saturate(1.6);
+  border: 1px solid var(--vidro-borda);
+}
+
+/* gavetas em vidro */
+.gaveta-painel {
+  background: var(--vidro-fundo);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  backdrop-filter: blur(28px) saturate(1.6);
+  border: 1px solid var(--vidro-borda);
+  border-bottom: 0;
+  box-shadow: inset 0 1px 0 var(--vidro-brilho), 0 -10px 40px rgba(0, 0, 0, 0.35);
+}
+.gaveta-fundo { background: rgba(4, 7, 12, 0.45); }
+.gaveta-painel input, .gaveta-painel textarea, .gaveta-painel .esforco { background: rgba(13, 17, 24, 0.55); }
+
+/* ---------- Tobias: barra de texto flutuante que sobe com o teclado ---------- */
+
+.visao-tobias { padding-bottom: calc(env(safe-area-inset-bottom) + 92px + var(--teclado, 0px)); }
+.visao-tobias .conteudo { animation: none; }
+.tobias { min-height: 0; }
+.tobias-mensagens { padding-bottom: 8px; }
+.tobias-form {
+  position: fixed;
+  left: 16px; right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 14px + var(--teclado, 0px));
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex; gap: 8px; align-items: center;
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  z-index: 7;
+  transition: bottom 0.2s ease-out;
+}
+.tobias-form input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  padding: 10px 0;
+  min-width: 0;
+}
+.tobias-form input:focus-visible { outline: none; }
+.tobias-form button {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--acao); color: var(--fundo);
+  font-size: 1.2rem; font-weight: 700; line-height: 1;
+  display: grid; place-items: center;
+  padding: 0;
+  transition: transform 0.12s, opacity 0.15s;
+}
+.tobias-form button:disabled { opacity: 0.35; }
+.tobias-form button:active { transform: scale(0.9); }
+@media (min-width: 760px) {
+  .tobias-form { left: 50%; right: auto; transform: translateX(-50%); width: min(760px, calc(100% - 56px)); }
+}
+
+/* ---------- toque e rolagem iOS ---------- */
+.mensagens, .semana-view, .lista-view { -webkit-overflow-scrolling: touch; }
+button, .chip, .bloco, .lista-item, .cartao .item { touch-action: manipulation; }
+.marca span { pointer-events: none; }
+
+/* skeleton e conteúdo não devem passar por cima do topo */
+.conteudo { position: relative; z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .topo, .tobias-form { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .vidro, .gaveta-painel, .menu-novo .opcoes button { background: rgba(20, 26, 36, 0.97); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }

@@ -30,6 +30,21 @@ export function Tobias({ onMudouAgenda }: { onMudouAgenda: () => void }) {
     return novas;
   }
   useEffect(() => { carregar(); }, []);
+
+  // iOS não encolhe a viewport quando o teclado abre; a barra de texto ficaria escondida.
+  // visualViewport diz quanto o teclado ocupa; a gente empurra o form pra cima com uma CSS var.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const f = () => {
+      const teclado = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--teclado", `${teclado}px`);
+      if (teclado > 0) fim.current?.scrollIntoView({ block: "end" });
+    };
+    vv.addEventListener("resize", f);
+    vv.addEventListener("scroll", f);
+    return () => { vv.removeEventListener("resize", f); vv.removeEventListener("scroll", f); document.documentElement.style.removeProperty("--teclado"); };
+  }, []);
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [linhas, pensando]);
 
   async function enviar(t = texto) {
@@ -103,9 +118,9 @@ export function Tobias({ onMudouAgenda }: { onMudouAgenda: () => void }) {
         <div ref={fim} />
       </div>
 
-      <form className="tobias-form" onSubmit={(e) => { e.preventDefault(); enviar(); }}>
-        <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Fala com o Tobias" disabled={pensando} />
-        <button disabled={pensando || !texto.trim()}>Enviar</button>
+      <form className="tobias-form vidro" onSubmit={(e) => { e.preventDefault(); enviar(); }}>
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Fala com o Tobias" disabled={pensando} enterKeyHint="send" autoComplete="off" />
+        <button disabled={pensando || !texto.trim()} aria-label="Enviar">↑</button>
       </form>
     </section>
   );
