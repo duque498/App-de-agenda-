@@ -129,6 +129,30 @@ const tools = [
     },
   },
   {
+    name: "lembrete",
+    description: "Agenda um push (notificação no celular) num horário. Pode ser avulso ('me lembra às 16h de ligar pro dentista') ou ligado a um evento/tarefa (event_id) tipo '30 min antes'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "o que aparece na notificação" },
+        body: { type: "string" },
+        remind_at: { type: "string", description: "ISO 8601 com offset -03:00, no futuro" },
+        event_id: { type: "string", description: "opcional: id do evento/tarefa relacionado" },
+      },
+      required: ["title", "remind_at"],
+    },
+  },
+  {
+    name: "cancelar_lembrete",
+    description: "Cancela um lembrete pendente pelo id.",
+    input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
+  },
+  {
+    name: "listar_lembretes",
+    description: "Lista lembretes pendentes (ainda não enviados).",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "lembrar",
     description: "Guarda um fato durável sobre o Duque na memória compartilhada (ex.: 'treina seg/qua/sex às 18h', 'prova de física dia 20'). O Claude do claude.ai também lê isso. Não guarde coisa passageira.",
     input_schema: { type: "object", properties: { texto: { type: "string" } }, required: ["texto"] },
@@ -228,6 +252,23 @@ async function executar(nome: string, input: Record<string, unknown>) {
           .in("id", criados.slice(1).map((c) => c.id));
       }
       return { criados: linhas.length, primeiro: linhas[0].starts_at, ultimo: linhas[linhas.length - 1].starts_at, esforco };
+    }
+    case "lembrete": {
+      const quando = new Date(String(input.remind_at));
+      if (isNaN(quando.getTime())) return { erro: "remind_at inválido" };
+      if (quando.getTime() <= Date.now()) return { erro: "Esse horário já passou." };
+      const { data, error } = await admin.from("reminders")
+        .insert({ title: String(input.title), body: input.body ? String(input.body) : null, remind_at: quando.toISOString(), event_id: input.event_id ?? null })
+        .select("id,title,remind_at").single();
+      return error ? { erro: error.message } : { agendado: data };
+    }
+    case "cancelar_lembrete": {
+      const { error } = await admin.from("reminders").delete().eq("id", input.id).is("sent_at", null);
+      return error ? { erro: error.message } : { cancelado: input.id };
+    }
+    case "listar_lembretes": {
+      const { data, error } = await admin.from("reminders").select("id,title,remind_at,event_id").is("sent_at", null).order("remind_at").limit(50);
+      return error ? { erro: error.message } : { lembretes: data };
     }
     case "lembrar": {
       const { data, error } = await admin.from("memorias").insert({ texto: String(input.texto), origem: "tobias" }).select("id,texto").single();
@@ -367,6 +408,7 @@ Regras:
 - Se a pessoa pedir pra "organizar o dia", leia ler_resumo e listar_dia primeiro e proponha blocos concretos; só crie depois de ela confirmar, a não ser que ela já tenha mandado criar.
 - Depois de agir, confirme em uma linha o que mudou. Não repita a lista inteira.
 - Se faltar informação essencial (que horas?), pergunte em uma frase.
+- "Me lembra às X de Y" / "me avisa 30 min antes" → ferramenta lembrete (é push no celular). Pra lembrete antes de um evento, use listar_dia pra pegar o event_id e o horário.
 - Pra algo que se repete (aula toda semana, escola em dias úteis, tarefa toda sexta) use criar_serie, com kind "tarefa" quando for tarefa. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.`;
 
   const historico: Msg[] = limparHistorico([...messages].slice(-30));
@@ -401,7 +443,7 @@ Regras:
         for (const bloco of data.content as { type: string; id: string; name: string; input: Record<string, unknown> }[]) {
           if (bloco.type !== "tool_use") continue;
           const r = await executar(bloco.name, bloco.input);
-          if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento", "concluir_tarefa"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
+          if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento", "concluir_tarefa", "lembrete", "cancelar_lembrete"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
           resultados.push({ type: "tool_result", tool_use_id: bloco.id, content: JSON.stringify(r) });
         }
         historico.push({ role: "user", content: resultados });

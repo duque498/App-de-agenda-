@@ -241,3 +241,13 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - **Topo que recolhe**: `position: sticky` + listener de scroll com zona morta de 12px e acumulador de direção. Rolar pra baixo esconde; qualquer puxada pra cima mostra; perto do topo (< 24px) sempre visível. No Tobias é o que te deixa ver o seletor de dias/visões: desce a conversa, some; puxa, volta.
 - **Teclado do iOS**: ele não encolhe a viewport, só cobre. `window.visualViewport` diz a altura visível real; a diferença vira a CSS var `--teclado`, e a barra de texto (`position: fixed`) sobe junto. `interactive-widget=resizes-content` na meta viewport ajuda nos iOS mais novos.
 - Inputs com `font-size: 16px`: abaixo disso o Safari dá zoom automático ao focar. `enterKeyHint="send"` troca o "return" do teclado por "enviar". `touch-action: manipulation` tira os 300ms de atraso no toque. `overscroll-behavior-y: none` evita o "pull" branco no topo da página.
+
+## 23. Lembretes a tal hora
+
+- Tabela `reminders` (título, corpo, `remind_at`, `sent_at`, `event_id` opcional). `on delete cascade`: apagou o evento, some o lembrete.
+- **`pg_cron` a cada minuto** chama `disparar_lembretes()`. Ela faz `UPDATE ... SET sent_at = now() WHERE sent_at IS NULL AND remind_at <= now() RETURNING ...` — marca como enviado **na mesma instrução** que seleciona. Se duas execuções se cruzarem, só uma pega cada linha: o UPDATE trava a linha. Sem isso, push duplicado.
+- O push sai pela mesma `send-push` do resumo das 14h, com `{title, body, url}`; a função já tratava esse formato "manual". Zero código novo de push.
+- Índice parcial `where sent_at is null`: a consulta do cron só varre pendentes, não a tabela toda.
+- No editor: select "Lembrete" (na hora, 5/10/15/30 min, 1h, 2h, 1 dia antes; item sem hora → "no dia às 08:00"). Salvar apaga o pendente anterior e cria o novo. Lembrete no passado é ignorado em silêncio.
+- No "+": terceira opção, **Lembrete** avulso (só título, data, hora). Aparecem numa lista com 🔔 no dia.
+- Tobias: `lembrete`, `cancelar_lembrete`, `listar_lembretes`. "Me avisa 30 min antes da reunião" → ele lista o dia, pega o `event_id` e o horário, e agenda.

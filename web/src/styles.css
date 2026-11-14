@@ -660,3 +660,35 @@ button, .chip, .bloco, .lista-item, .cartao .item { touch-action: manipulation; 
 @media (prefers-reduced-transparency: reduce) {
   .vidro, .gaveta-painel, .menu-novo .opcoes button { background: rgba(20, 26, 36, 0.97); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* ---------- lembretes ---------- */
+select {
+  width: 100%;
+  font-size: 16px;
+  background: var(--camada-2);
+  color: var(--texto);
+  border: 0;
+  border-radius: var(--raio-p);
+  padding: 13px 14px;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--texto-2) 50%), linear-gradient(135deg, var(--texto-2) 50%, transparent 50%);
+  background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+.gaveta-painel select { background-color: rgba(13, 17, 24, 0.55); }
+.campo-lembrete { display: flex; flex-direction: column; gap: 6px; }
+
+.lembretes { display: grid; gap: 6px; margin-bottom: 14px; }
+.lembrete {
+  display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center;
+  padding: 9px 12px; border-radius: var(--raio-p);
+  background: color-mix(in srgb, var(--acao) 8%, transparent);
+  font-size: 0.9rem;
+}
+.lembrete .sino { font-size: 0.9rem; }
+.lembrete strong { color: var(--acao); font-variant-numeric: tabular-nums; margin-right: 6px; font-weight: 600; }
+.lembrete.enviado { opacity: 0.5; }
+.lembrete .texto { font-size: 1.1rem; padding: 0 4px; }

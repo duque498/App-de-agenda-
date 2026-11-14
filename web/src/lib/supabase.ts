@@ -41,3 +41,12 @@ export type Brief = {
   suggestion: string;
   raw_markdown: string | null;
 };
+
+export type Lembrete = {
+  id: string;
+  event_id: string | null;
+  title: string;
+  body: string | null;
+  remind_at: string;
+  sent_at: string | null;
+};

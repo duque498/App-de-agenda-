@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { supabase, type Contexto, type Evento, type Tipo } from "../lib/supabase";
+import { useEffect, useState } from "react";
+import { supabase, type Contexto, type Evento, type Lembrete, type Tipo } from "../lib/supabase";
 import { diaDe } from "../lib/dates";
 import { avaliarEsforco } from "../lib/assistente";
 
@@ -39,6 +39,21 @@ export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo
   const [fim, setFim] = useState(evento ? horaLocal(evento.ends_at) : "");
   const [notes, setNotes] = useState(evento?.notes ?? "");
   const [salvando, setSalvando] = useState(false);
+  // Lembrete: minutos antes do início. "" = sem lembrete. Em item sem hora, fica "no dia às 08:00".
+  const [lembrete, setLembrete] = useState<string>("");
+  const [lembreteExistente, setLembreteExistente] = useState<Lembrete | null>(null);
+
+  useEffect(() => {
+    if (!evento) return;
+    supabase.from("reminders").select("*").eq("event_id", evento.id).is("sent_at", null).order("remind_at").limit(1)
+      .then(({ data }) => {
+        const l = data?.[0] as Lembrete | undefined;
+        if (!l) return;
+        setLembreteExistente(l);
+        const min = Math.round((new Date(evento.starts_at).getTime() - new Date(l.remind_at).getTime()) / 60000);
+        setLembrete(evento.all_day ? "dia" : String(min));
+      });
+  }, [evento]);
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
@@ -59,6 +74,26 @@ export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo
     const { data: salvo, error } = await q;
     setSalvando(false);
     if (error) return alert(error.message);
+
+    // Lembrete: apaga o pendente anterior e cria o novo (se houver).
+    const idEvento = salvo?.id ?? evento?.id;
+    if (idEvento) {
+      if (lembreteExistente) await supabase.from("reminders").delete().eq("id", lembreteExistente.id);
+      if (lembrete) {
+        const inicio = new Date(payload.starts_at);
+        const quando = lembrete === "dia"
+          ? new Date(`${data}T08:00:00-03:00`)
+          : new Date(inicio.getTime() - Number(lembrete) * 60000);
+        if (quando.getTime() > Date.now()) {
+          await supabase.from("reminders").insert({
+            event_id: idEvento,
+            title: tarefa ? `Tarefa: ${title.trim()}` : title.trim(),
+            body: diaInteiro ? "Hoje" : `${lembrete === "0" ? "Agora" : `Em ${lembrete} min`} · ${inicio.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`,
+            remind_at: quando.toISOString(),
+          });
+        }
+      }
+    }
     onSalvo();
     // Novo item: a IA avalia em segundo plano. A tela já fechou; quando terminar,
     // o onAvaliado recarrega e a % aparece. Erro aqui não atrapalha o salvar.
@@ -122,6 +157,27 @@ export function EditorEvento({ dia, evento, tipo, horaInicial, onFechar, onSalvo
             )}
           </div>
         )}
+
+        <label className="campo-lembrete">
+          Lembrete
+          <select value={lembrete} onChange={(e) => setLembrete(e.target.value)}>
+            <option value="">Sem lembrete</option>
+            {diaInteiro ? (
+              <option value="dia">No dia, às 08:00</option>
+            ) : (
+              <>
+                <option value="0">Na hora</option>
+                <option value="5">5 min antes</option>
+                <option value="10">10 min antes</option>
+                <option value="15">15 min antes</option>
+                <option value="30">30 min antes</option>
+                <option value="60">1 hora antes</option>
+                <option value="120">2 horas antes</option>
+                <option value="1440">1 dia antes</option>
+              </>
+            )}
+          </select>
+        </label>
 
         <textarea
           placeholder="Notas — aceita Markdown (**negrito**, - listas). A IA usa isso pra avaliar."

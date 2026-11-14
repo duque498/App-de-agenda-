@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { supabase, type Brief, type Evento, type Tipo } from "./lib/supabase";
+import { supabase, type Brief, type Evento, type Lembrete, type Tipo } from "./lib/supabase";
 import { addDias, formatarDia, gradeDoMes, hojeISO, inicioDaSemana, limitesDoDia, mesAno } from "./lib/dates";
 import { Login } from "./components/Login";
 import { Briefing } from "./components/Briefing";
@@ -13,6 +13,8 @@ import { VisaoGrade } from "./components/VisaoGrade";
 import { EditorEvento } from "./components/EditorEvento";
 import { Detalhe } from "./components/Detalhe";
 import { Tarefas } from "./components/Tarefas";
+import { Lembretes } from "./components/Lembretes";
+import { EditorLembrete } from "./components/EditorLembrete";
 import { PushToggle } from "./components/PushToggle";
 
 // Carregados sob demanda: Tobias traz marked+DOMPurify, Perfil raramente abre.
@@ -22,7 +24,7 @@ const Perfil = lazy(() => import("./components/Perfil").then((m) => ({ default: 
 
 // Cache local dos dados por visão+dia: a tela abre com o que foi visto da última vez e
 // atualiza por baixo quando a rede responde (stale-while-revalidate). Nunca abre vazia.
-type Snapshot = { brief: Brief | null; eventos: Evento[]; streak: number };
+type Snapshot = { brief: Brief | null; eventos: Evento[]; streak: number; lembretes?: Lembrete[] };
 function lerCache(chave: string): Snapshot | null {
   try { const raw = localStorage.getItem(`cache:${chave}`); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
@@ -67,6 +69,8 @@ export default function App() {
   const [brief, setBrief] = useState<Brief | null>(inicial?.brief ?? null);
   const [eventos, setEventos] = useState<Evento[]>(inicial?.eventos ?? []);
   const [streak, setStreak] = useState<number | null>(inicial?.streak ?? null);
+  const [lembretes, setLembretes] = useState<Lembrete[]>(inicial?.lembretes ?? []);
+  const [lembreteAberto, setLembreteAberto] = useState(false);
   const [carregando, setCarregando] = useState(!inicial);
   const pedidoAtual = useRef(0);
   const [editor, setEditor] = useState<Editor>(null);
@@ -106,16 +110,17 @@ export default function App() {
     const { inicio, fim } = intervalo(visao, dia);
     const meuPedido = ++pedidoAtual.current; // descarta respostas de pedidos antigos (troca rápida de dia)
     const cache = lerCache(`${visao}:${dia}`);
-    if (cache) { setBrief(cache.brief); setEventos(cache.eventos); setStreak(cache.streak); setCarregando(false); }
+    if (cache) { setBrief(cache.brief); setEventos(cache.eventos); setStreak(cache.streak); setLembretes(cache.lembretes ?? []); setCarregando(false); }
     else setCarregando(true);
-    const [b, e, s] = await Promise.all([
+    const [b, e, s, l] = await Promise.all([
       supabase.from("daily_briefs").select("*").eq("brief_date", dia).maybeSingle(),
       supabase.from("events").select("*").gte("starts_at", inicio).lte("starts_at", fim).order("starts_at"),
       supabase.from("course_streak").select("streak").maybeSingle(),
+      supabase.from("reminders").select("*").gte("remind_at", inicio).lte("remind_at", fim).order("remind_at"),
     ]);
     if (meuPedido !== pedidoAtual.current) return;
-    const snap: Snapshot = { brief: (b.data as Brief) ?? null, eventos: (e.data as Evento[]) ?? [], streak: s.data?.streak ?? 0 };
-    setBrief(snap.brief); setEventos(snap.eventos); setStreak(snap.streak);
+    const snap: Snapshot = { brief: (b.data as Brief) ?? null, eventos: (e.data as Evento[]) ?? [], streak: s.data?.streak ?? 0, lembretes: (l.data as Lembrete[]) ?? [] };
+    setBrief(snap.brief); setEventos(snap.eventos); setStreak(snap.streak); setLembretes(snap.lembretes ?? []);
     setCarregando(false);
     gravarCache(`${visao}:${dia}`, snap);
   }, [dia, visao]);
@@ -191,6 +196,7 @@ export default function App() {
                   <Briefing brief={brief} streak={streak} />
                   <Semana dia={dia} onEscolher={setDia} />
                   <Tarefas tarefas={tarefasDoDia} onAbrir={abrir} onMudou={carregar} />
+                  <Lembretes lembretes={lembretes} onMudou={carregar} />
                 </div>
                 <div className="dia-coluna-b">
                   <Timeline
@@ -231,6 +237,10 @@ export default function App() {
               <strong>Tarefa</strong>
               <small>Algo a fazer no dia, hora opcional</small>
             </button>
+            <button onClick={() => { setMenuNovo(false); setLembreteAberto(true); }}>
+              <strong>Lembrete</strong>
+              <small>Só um aviso a tal hora</small>
+            </button>
           </div>
         </div>
       )}
@@ -254,6 +264,10 @@ export default function App() {
           onSalvo={() => { setEditor(null); setDetalhe(null); carregar(); }}
           onAvaliado={carregar}
         />
+      )}
+
+      {lembreteAberto && (
+        <EditorLembrete dia={dia} onFechar={() => setLembreteAberto(false)} onSalvo={() => { setLembreteAberto(false); carregar(); }} />
       )}
 
       {perfilAberto && (
