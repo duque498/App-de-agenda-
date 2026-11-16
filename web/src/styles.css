@@ -692,3 +692,30 @@ select {
 .lembrete strong { color: var(--acao); font-variant-numeric: tabular-nums; margin-right: 6px; font-weight: 600; }
 .lembrete.enviado { opacity: 0.5; }
 .lembrete .texto { font-size: 1.1rem; padding: 0 4px; }
+
+/* ---------- treino (Antifofista) ---------- */
+.treino { margin-bottom: 14px; border-radius: var(--raio-p); background: var(--camada); overflow: hidden; }
+.treino-topo {
+  display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center;
+  width: 100%; padding: 10px 12px; text-align: left; background: none; border: 0; color: inherit; cursor: pointer;
+}
+.treino-topo .letra {
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  font-weight: 700; font-size: 1.15rem; color: #fff;
+  background: linear-gradient(135deg, var(--acao), color-mix(in srgb, var(--acao) 55%, #7c3aed));
+}
+.treino-topo .info { display: grid; gap: 1px; min-width: 0; }
+.treino-topo strong { font-size: 0.95rem; font-weight: 600; }
+.treino-topo small { color: var(--texto-3); font-size: 0.78rem; }
+.treino-topo .seta { color: var(--texto-3); font-size: 0.8rem; }
+.treino-corpo { padding: 0 12px 12px; border-top: 1px solid var(--linha); animation: surgir 0.18s ease-out; }
+.treino-sessoes { display: flex; gap: 6px; align-items: center; margin: 10px 0; }
+.treino-sessoes .mudo { margin-left: auto; font-size: 0.75rem; }
+.treino ol { list-style: none; display: grid; gap: 4px; }
+.treino li { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--texto) 4%, transparent); font-size: 0.86rem; }
+.treino li b { font-variant-numeric: tabular-nums; color: var(--acao); font-weight: 600; }
+.treino li small { grid-column: 1 / -1; color: var(--texto-3); font-size: 0.74rem; }
+.treino li.extra { background: transparent; border: 1px dashed var(--linha); }
+.treino .mudo { font-size: 0.78rem; margin-top: 8px; }
+.treino .acoes { margin-top: 10px; display: flex; justify-content: flex-end; }
+@keyframes surgir { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }

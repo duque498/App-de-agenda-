@@ -172,7 +172,68 @@ const tools = [
     description: "Apaga um evento pelo id.",
     input_schema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
   },
+  // ---- Antifofista Squad (treino e dieta) ----
+  {
+    name: "treino",
+    description: "Devolve o treino do plano Antifofista: qual sessão é a próxima na rotação (A peito/tríceps, B costas/bíceps, C ombro/trapézio, D pernas), semana da periodização, lista de exercícios com séries×reps da semana atual, e as últimas cargas registradas de cada exercício. Pode pedir uma sessão específica.",
+    input_schema: { type: "object", properties: { sessao: { type: "string", description: "A, B, C ou D. Omitir = a próxima na rotação." } } },
+  },
+  {
+    name: "registrar_treino",
+    description: "Registra que um treino foi feito (avança a rotação). Opcionalmente com as cargas por exercício e o id do evento de academia da agenda.",
+    input_schema: {
+      type: "object",
+      properties: {
+        dia: { type: "string", description: "YYYY-MM-DD" },
+        sessao: { type: "string", description: "A, B, C ou D" },
+        event_id: { type: "string" },
+        registros: {
+          type: "array",
+          description: "Cargas por exercício.",
+          items: {
+            type: "object",
+            properties: {
+              exercicio: { type: "string" },
+              series: { type: "array", items: { type: "object", properties: { kg: { type: "number" }, reps: { type: "integer" } } } },
+            },
+            required: ["exercicio"],
+          },
+        },
+        obs: { type: "string" },
+      },
+      required: ["dia", "sessao"],
+    },
+  },
+  {
+    name: "dieta",
+    description: "Devolve o plano alimentar completo da Antifofista: objetivo, macros, água, as 5 refeições com itens e gramas, suplementos e horários, trocas equivalentes e regras (refeição livre, pós-treino).",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "checkin",
+    description: "Registra ou consulta o check-in quinzenal (terça, fotos em jejum) com o treinador: peso, se foi enviado, relato.",
+    input_schema: {
+      type: "object",
+      properties: {
+        dia: { type: "string", description: "YYYY-MM-DD. Omitir = listar os últimos." },
+        peso_kg: { type: "number" },
+        enviado: { type: "boolean" },
+        relato: { type: "string" },
+      },
+    },
+  },
 ];
+
+// Resumo curto do treino pra entrar no contexto do sistema (sem gastar tool call pra saber o básico).
+async function resumoTreino() {
+  const { data: t } = await admin.from("treino_hoje").select("*").maybeSingle();
+  if (!t) return "(sem plano de treino ativo)";
+  const { data: p } = await admin.from("planos").select("regras,dieta").eq("id", t.plano_id).single();
+  const sessoes = (p?.regras as Record<string, Record<string, string>>)?.sessoes ?? {};
+  const presc = (p?.regras as Record<string, Record<string, string>>)?.periodizacao?.[String(t.semana)] ?? "";
+  const ult = t.ultimo_treino ? `último: ${t.ultima_sessao} em ${t.ultimo_treino}` : "nenhum treino registrado ainda";
+  return `${t.nome}. Semana ${t.semana}/6 (prescrição ${presc}). Próximo treino na rotação: ${t.proxima_sessao} (${sessoes[t.proxima_sessao] ?? ""}); ${ult}. Sempre com abdominal + 20 min cardio. Dieta: ${(p?.dieta as Record<string, unknown>)?.objetivo ?? ""}, 5 refeições (café, pré-treino, almoço, pós-treino, jantar), água ~4,65 L. Detalhes via ferramentas treino e dieta.`;
+}
 
 async function executar(nome: string, input: Record<string, unknown>) {
   switch (nome) {
@@ -286,6 +347,57 @@ async function executar(nome: string, input: Record<string, unknown>) {
       const { error } = await admin.from("events").delete().eq("id", input.id);
       return error ? { erro: error.message } : { removido: input.id };
     }
+    case "treino": {
+      const { data: t } = await admin.from("treino_hoje").select("*").maybeSingle();
+      if (!t) return { erro: "Nenhum plano de treino ativo." };
+      const sessao = String(input.sessao ?? t.proxima_sessao).toUpperCase();
+      const { data: p } = await admin.from("planos").select("regras").eq("id", t.plano_id).single();
+      const [{ data: exs }, { data: feitos }] = await Promise.all([
+        admin.from("plano_exercicios").select("sessao,ordem,exercicio,prescricao,obs").eq("plano_id", t.plano_id).in("sessao", [sessao, "ABD", "CARDIO"]).order("sessao").order("ordem"),
+        admin.from("treinos_feitos").select("dia,registros").eq("sessao", sessao).order("dia", { ascending: false }).limit(3),
+      ]);
+      // Última carga de cada exercício, do registro mais recente que o tenha.
+      const ultimas: Record<string, unknown> = {};
+      for (const f of feitos ?? []) {
+        for (const r of (f.registros as { exercicio: string; series?: unknown[] }[]) ?? []) {
+          if (!ultimas[r.exercicio]) ultimas[r.exercicio] = { dia: f.dia, series: r.series };
+        }
+      }
+      const sem = String(t.semana);
+      return {
+        plano: t.nome, semana: t.semana, sessao, proxima_na_rotacao: t.proxima_sessao, ultimo_treino: t.ultimo_treino,
+        regras: p?.regras,
+        exercicios: (exs ?? []).map((e) => ({
+          bloco: e.sessao, ordem: e.ordem, exercicio: e.exercicio, prescricao: (e.prescricao as Record<string, string>)[sem], obs: e.obs,
+          ultima_carga: ultimas[e.exercicio] ?? null,
+        })),
+      };
+    }
+    case "registrar_treino": {
+      const { data: t } = await admin.from("treino_hoje").select("plano_id,semana").maybeSingle();
+      const { data, error } = await admin.from("treinos_feitos").insert({
+        plano_id: t?.plano_id ?? null, semana: t?.semana ?? null,
+        dia: String(input.dia), sessao: String(input.sessao).toUpperCase(),
+        event_id: input.event_id ?? null, registros: input.registros ?? [], obs: input.obs ?? null,
+      }).select("id,dia,sessao").single();
+      return error ? { erro: error.message } : { registrado: data };
+    }
+    case "dieta": {
+      const { data: p } = await admin.from("planos").select("dieta").eq("ativo", true).order("inicio", { ascending: false }).limit(1).maybeSingle();
+      return p ? { dieta: p.dieta } : { erro: "Nenhum plano ativo." };
+    }
+    case "checkin": {
+      if (!input.dia) {
+        const { data, error } = await admin.from("checkins").select("*").order("dia", { ascending: false }).limit(10);
+        return error ? { erro: error.message } : { checkins: data };
+      }
+      const linha: Record<string, unknown> = { dia: input.dia };
+      if (input.peso_kg != null) linha.peso_kg = input.peso_kg;
+      if (input.enviado != null) linha.enviado = input.enviado;
+      if (input.relato != null) linha.relato = input.relato;
+      const { data, error } = await admin.from("checkins").upsert(linha, { onConflict: "dia" }).select().single();
+      return error ? { erro: error.message } : { checkin: data };
+    }
     default:
       return { erro: `ferramenta desconhecida: ${nome}` };
   }
@@ -377,9 +489,10 @@ Deno.serve(async (req) => {
   const textoNovo = (corpo.texto ?? "").trim();
   if (!textoNovo) return Response.json({ erro: "Mensagem vazia." }, { status: 400, headers: cors });
   const messages: Msg[] = [...anteriores, { role: "user", content: textoNovo }];
-  const [{ data: perfilRow }, { data: memRows }] = await Promise.all([
+  const [{ data: perfilRow }, { data: memRows }, treinoResumo] = await Promise.all([
     admin.from("perfil").select("texto").eq("id", 1).maybeSingle(),
     admin.from("memorias").select("id,texto,origem,created_at").order("id").limit(80),
+    resumoTreino().catch(() => "(treino indisponível)"),
   ]);
   const perfil = perfilRow?.texto ?? "";
   const memorias = (memRows ?? []).map((m) => `[${m.id}] ${m.texto} (${m.origem}, ${String(m.created_at).slice(0, 10)})`).join("\n");
@@ -397,8 +510,11 @@ ${perfil || "(sem perfil)"}
 MEMÓRIA COMPARTILHADA (fatos duráveis; você e o Claude do claude.ai gravam aqui; use a ferramenta lembrar quando ele contar algo que vale guardar):
 ${memorias || "(vazia)"}
 
+TREINO E DIETA (consultoria Antifofista Squad; você acompanha):
+${treinoResumo}
+
 Agora é ${agora} (fuso ${TZ}). Hoje é ${hojeISO}.
-Contextos possíveis: trabalho (Medweb), escola, curso (web.dev), pessoal.
+Contextos possíveis: trabalho (Medweb), escola, curso (web.dev), pessoal (academia e refeições entram aqui).
 Dois tipos de item: evento (reunião, aula, bloco de trabalho — ocupa horário) e tarefa (algo a fazer no dia, ex. "responder o Kazu", "terminar issue 333" — hora opcional, pode ser concluída). "Lembra de", "preciso fazer", "tarefa" → tarefa.
 Fontes: a agenda (listar_dia, listar_periodo) e os resumos diários de trabalho (ler_resumos_recentes) que chegam às 14h com PRs, reviews, issues, e-mails e estado do curso. Você não acessa GitHub/Gmail ao vivo; se perguntarem algo que exige isso, diga que o dado é do último resumo e a data dele.
 Regras:
@@ -409,7 +525,8 @@ Regras:
 - Depois de agir, confirme em uma linha o que mudou. Não repita a lista inteira.
 - Se faltar informação essencial (que horas?), pergunte em uma frase.
 - "Me lembra às X de Y" / "me avisa 30 min antes" → ferramenta lembrete (é push no celular). Pra lembrete antes de um evento, use listar_dia pra pegar o event_id e o horário.
-- Pra algo que se repete (aula toda semana, escola em dias úteis, tarefa toda sexta) use criar_serie, com kind "tarefa" quando for tarefa. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.`;
+- Pra algo que se repete (aula toda semana, escola em dias úteis, tarefa toda sexta) use criar_serie, com kind "tarefa" quando for tarefa. Se a pessoa não disser até quando, use até o fim do mês seguinte e diga isso na resposta.
+- Academia: "qual o treino de hoje?" → ferramenta treino. Ao criar o bloco de academia na agenda, ponha nas notes a sessão e os exercícios com séries×reps da semana (ex. "Treino A — peito/tríceps · S1 3x7a9\n- Supino Inclinado (H)…"), ~75 min. Quando ele disser que treinou ("fiz o A", "treinei hoje, supino 40kg 3x8"), use registrar_treino com as cargas que ele passou — isso avança a rotação. Pra encaixar refeições (pré e pós-treino em volta do bloco de academia) consulte dieta. Check-in com o treinador é a cada 15 dias na terça, fotos em jejum; use checkin pra registrar peso e envio.`;
 
   const historico: Msg[] = limparHistorico([...messages].slice(-30));
   // Tudo a partir daqui (a mensagem nova do usuário é a última) é o que será persistido no fim.
@@ -443,7 +560,7 @@ Regras:
         for (const bloco of data.content as { type: string; id: string; name: string; input: Record<string, unknown> }[]) {
           if (bloco.type !== "tool_use") continue;
           const r = await executar(bloco.name, bloco.input);
-          if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento", "concluir_tarefa", "lembrete", "cancelar_lembrete"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
+          if (["criar_evento", "criar_serie", "atualizar_evento", "remover_evento", "concluir_tarefa", "lembrete", "cancelar_lembrete", "registrar_treino"].includes(bloco.name) && !("erro" in r)) acoes.push(bloco.name);
           resultados.push({ type: "tool_result", tool_use_id: bloco.id, content: JSON.stringify(r) });
         }
         historico.push({ role: "user", content: resultados });

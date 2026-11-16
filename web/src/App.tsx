@@ -14,6 +14,7 @@ import { EditorEvento } from "./components/EditorEvento";
 import { Detalhe } from "./components/Detalhe";
 import { Tarefas } from "./components/Tarefas";
 import { Lembretes } from "./components/Lembretes";
+import { Treino } from "./components/Treino";
 import { EditorLembrete } from "./components/EditorLembrete";
 import { PushToggle } from "./components/PushToggle";
 
@@ -195,6 +196,7 @@ export default function App() {
                 <div className="dia-coluna-a">
                   <Briefing brief={brief} streak={streak} />
                   <Semana dia={dia} onEscolher={setDia} />
+                  <Treino dia={dia} />
                   <Tarefas tarefas={tarefasDoDia} onAbrir={abrir} onMudou={carregar} />
                   <Lembretes lembretes={lembretes} onMudou={carregar} />
                 </div>

@@ -251,3 +251,22 @@ Referência: Google Agenda. O que copiei dele: seletor de visão no topo, setas 
 - No editor: select "Lembrete" (na hora, 5/10/15/30 min, 1h, 2h, 1 dia antes; item sem hora → "no dia às 08:00"). Salvar apaga o pendente anterior e cria o novo. Lembrete no passado é ignorado em silêncio.
 - No "+": terceira opção, **Lembrete** avulso (só título, data, hora). Aparecem numa lista com 🔔 no dia.
 - Tobias: `lembrete`, `cancelar_lembrete`, `listar_lembretes`. "Me avisa 30 min antes da reunião" → ele lista o dia, pega o `event_id` e o horário, e agenda.
+
+## 24. Antifofista Squad: treino e dieta dentro do app
+
+**Por que não "integrar com o site":** a consultoria entrega o plano em PDF, não tem API nem área logada que a gente possa ler por programa. Então o dado entra uma vez (eu li os três PDFs e extraí) e vive no Supabase. Quando chegar plano novo, repete-se a extração e cria-se uma nova linha em `planos` com `ativo = true`.
+
+**Modelo:**
+- `planos` — uma linha por plano: nome, `inicio` (16/11/2026), `semanas` (6), `regras` (JSON: rotação, aquecimento, descanso, periodização por semana, fases, check-in, sono) e `dieta` (JSON: macros, água, as 5 refeições com gramas, suplementos com horário, trocas, regras).
+- `plano_exercicios` — exercício por sessão (A/B/C/D/ABD/CARDIO) com `prescricao` por semana (`{"1":"3x7a9", …, "6":"3x8a12"}`). Guardar a prescrição por semana no próprio exercício evita um join e deixa variar por exercício no futuro.
+- `treinos_feitos` — registro: dia, sessão, semana, cargas em JSON `[{exercicio, series:[{kg,reps}]}]`. É daqui que a rotação avança.
+- `checkins` — o check-in quinzenal de terça (peso, enviado, relato).
+- View `treino_hoje` — calcula a **semana** (dias desde o início ÷ 7, travada em 6) e a **próxima sessão** (a seguinte à última registrada em A→B→C→D→A). Rotação contínua, não presa ao dia da semana, porque o plano manda "A,B,C,D e no 5º dia volta ao A".
+
+**Tobias:** quatro ferramentas novas — `treino` (sessão da vez com séries×reps da semana e última carga de cada exercício), `registrar_treino`, `dieta`, `checkin`. O resumo do treino (semana, próxima sessão, último feito) entra no system prompt direto, pra ele responder "qual o treino de hoje?" sem gastar rodada. A instrução manda ele escrever os exercícios nas `notes` do bloco de academia, então o evento na agenda já traz o treino.
+
+**Esforço:** `esforco` lê `treino_hoje` e sabe que um bloco de academia é esforço físico 40–60 (pernas mais alto) e que tarefa pesada depois do treino pede pós-treino antes.
+
+**UI:** cartão `Treino` na aba Dia, abaixo da faixa da semana: letra da sessão, nome do grupo, semana e prescrição. Abre pra listar os exercícios, trocar de sessão (se ele treinar fora da ordem) e marcar "Feito", que grava em `treinos_feitos` sem passar pela IA — operação barata não precisa de LLM.
+
+**Dados pessoais:** peso, altura e idade ficaram no JSON `dieta.dados` porque a dieta foi calculada a partir deles (TMB/GCDT). RLS cobre as quatro tabelas e a view roda como `security_invoker`, então só o dono lê.
